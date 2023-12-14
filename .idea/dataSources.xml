@@ -15,7 +15,7 @@
       <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-v2.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="test" uuid="fd6f4610-ae5b-4fe6-86f9-28ca02d461cc">
+    <data-source source="LOCAL" name="test" uuid="827bcada-349e-4c4e-ad17-0b6a1ad138b2">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
