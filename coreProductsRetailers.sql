@@ -1,3 +1,4 @@
+--[2023-12-15 23:33:07] 498,111 rows affected in 2 h 50 m 29 s 912 ms
 CREATE TABLE temp."coreProductsRetailers" AS
 WITH products AS (SELECT "sourceId",
 
