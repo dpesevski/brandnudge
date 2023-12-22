@@ -1,15 +1,15 @@
 SELECT *
-FROM temp."coreProductsRetailers"
+FROM staging."coreProductsRetailers"
          CROSS JOIN LATERAL UNNEST("productsData")
 WHERE "coreProductId" = '44'
   AND "retailerId" = 8;
 
 SELECT JSON_AGG("coreProductsRetailers") AS results
-FROM temp."coreProductsRetailers"
+FROM staging."coreProductsRetailers"
 WHERE "coreProductId" = '44'
   AND "retailerId" = 8;
 
-ALTER TYPE temp.product_ranking SET SCHEMA public;
+ALTER TYPE staging.product_ranking SET SCHEMA public;
 
 SELECT PG_TERMINATE_BACKEND(31495);
 

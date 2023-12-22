@@ -22,7 +22,7 @@ CREATE TYPE temp."productStatuses" AS
 SET work_mem TO '2GB'; --5463728KB
 SHOW WORK_MEM;
 
-CREATE TABLE temp.products_base AS
+CREATE TABLE staging.products_base AS
 SELECT id                                           AS "productId",
        "sourceType",
        ean,
@@ -46,8 +46,8 @@ SELECT id                                           AS "productId",
        REPLACE("shelfPrice", 'Nan', NULL)::money    AS "shelfPrice"
 FROM products;
 
-CREATE TABLE temp."t_productsData" AS
-SELECT "productId", ARRAY_AGG(pd:: temp."productsData") AS "productsData"
+CREATE TABLE staging."t_productsData" AS
+SELECT "productId", ARRAY_AGG(pd:: staging.t_productsData) AS "productsData"
 FROM public."productsData"
          CROSS JOIN LATERAL (SELECT category,
                                     "categoryType",
@@ -61,20 +61,20 @@ FROM public."productsData"
                                     "taxonomyId") pd
 GROUP BY "productId";
 
-CREATE TABLE temp."t_productStatuses" AS
+CREATE TABLE staging."t_productStatuses" AS
 SELECT "productId",
-       ARRAY_AGG(ps::temp."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
+       ARRAY_AGG(ps::staging."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
 FROM public."productStatuses"
          CROSS JOIN LATERAL (SELECT status,
                                     screenshot,
                                     "createdAt") AS ps
 GROUP BY "productId";
 
-CREATE TABLE temp.products AS
+CREATE TABLE staging.products AS
 SELECT *
-FROM temp.products_base
-         LEFT OUTER JOIN temp."t_productsData" USING ("productId")
-         LEFT OUTER JOIN temp."t_productStatuses" USING ("productId");
+FROM staging.products_base
+         LEFT OUTER JOIN staging."t_productsData" USING ("productId")
+         LEFT OUTER JOIN staging."t_productStatuses" USING ("productId");
 
 VACUUM FULL;
 
@@ -84,16 +84,16 @@ SELECT COUNT(*)
 FROM public."productsData";--       335.937.414
 
 SELECT *
-FROM temp.products
+FROM staging.productsFull
 LIMIT 10;
 
 SELECT PG_TERMINATE_BACKEND(3090);
 
-TRUNCATE temp.products_base;
-TRUNCATE temp."t_productsData";
-TRUNCATE temp."t_productStatuses";
+TRUNCATE staging.products_base;
+TRUNCATE staging."t_productsData";
+TRUNCATE staging."t_productStatuses";
 
-CREATE TABLE temp.products AS
+CREATE TABLE staging.products AS
 WITH products AS (SELECT id                                           AS "productId",
                          "sourceType",
                          ean,
@@ -116,7 +116,7 @@ WITH products AS (SELECT id                                           AS "produc
                          REPLACE("basePrice", 'Nan', NULL)::money     AS "basePrice",
                          REPLACE("shelfPrice", 'Nan', NULL)::money    AS "shelfPrice"
                   FROM products),
-     pd AS (SELECT "productId", ARRAY_AGG(pd:: temp."productsData") AS "productsData"
+     pd AS (SELECT "productId", ARRAY_AGG(pd:: staging.t_productsData) AS "productsData"
             FROM "productsData"
                      CROSS JOIN LATERAL (SELECT category,
                                                 "categoryType",
@@ -130,7 +130,7 @@ WITH products AS (SELECT id                                           AS "produc
                                                 "taxonomyId") pd
             GROUP BY "productId"),
      ps AS (SELECT "productId",
-                   ARRAY_AGG(ps::temp."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
+                   ARRAY_AGG(ps::staging."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
             FROM "productStatuses"
                      CROSS JOIN LATERAL (SELECT status,
                                                 screenshot,

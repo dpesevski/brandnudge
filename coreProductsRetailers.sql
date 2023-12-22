@@ -1,5 +1,5 @@
 --[2023-12-15 23:33:07] 498,111 rows affected in 2 h 50 m 29 s 912 ms
-CREATE TABLE temp."coreProductsRetailers" AS
+CREATE TABLE staging."coreProductsRetailers" AS
 WITH products AS (SELECT "sourceId",
 
                          "sourceType",
@@ -42,7 +42,7 @@ WITH products AS (SELECT "sourceId",
 
                          ROW_NUMBER() OVER (PARTITION BY "coreProductId",
                              "retailerId" ORDER BY DATE DESC)        AS row_num
-                  FROM TEMP.products)
+                  FROM staging.productsFull)
 SELECT row_num,
        "productId",
        "sourceType",

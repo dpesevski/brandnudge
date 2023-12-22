@@ -41,7 +41,7 @@ WITH products AS (SELECT "sourceId",
 
                          ROW_NUMBER() OVER (PARTITION BY "coreProductId",
                              "retailerId" ORDER BY DATE DESC)        AS row_num
-                  FROM TEMP.products
+                  FROM staging.productsFull
                   WHERE "coreProductId" = 208
                     AND "retailerId" = 2)
 SELECT "sourceType",
@@ -95,7 +95,7 @@ CREATE TYPE public.product_ranking AS
 	"taxonomyId" integer
 );
 
-CREATE TABLE temp.coreProductsRetailers_product_ranking AS
+CREATE TABLE staging.coreProductsRetailers_product_ranking AS
 SELECT "coreProductId",
        "retailerId",
        ARRAY_AGG((
@@ -108,7 +108,7 @@ SELECT "coreProductId",
                   featured,
                   "featuredRank",
                   "taxonomyId"
-                     )::temp.product_ranking ORDER BY date DESC
+                     )::staging.product_ranking ORDER BY date DESC
            ) AS ranking
 FROM products
          INNER JOIN "productsData" ON (products.id = "productId")
@@ -116,14 +116,14 @@ GROUP BY "coreProductId",
          "retailerId";
 
 SELECT JSON_AGG(coreProductsRetailers_product_ranking)
-FROM temp.coreProductsRetailers_product_ranking
+FROM staging.coreProductsRetailers_product_ranking
 WHERE "coreProductId" = '44'
   AND "retailerId" = 8;
 
 SELECT COUNT(*)
-FROM temp.coreProductsRetailers_product_ranking;
+FROM staging.coreProductsRetailers_product_ranking;
 SELECT COUNT(*)
-FROM temp."coreProductsRetailers";
+FROM staging."coreProductsRetailers";
 
 drop table "coreProductsRetailers" ;
 CREATE TABLE "coreProductsRetailers" AS
@@ -164,4 +164,4 @@ SELECT "coreProductId",
        "sizeUnit",
        is_delisted,
        ranking
-FROM temp."coreProductsRetailers"
+FROM staging."coreProductsRetailers"

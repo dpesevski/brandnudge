@@ -1,36 +1,36 @@
 SELECT *
-FROM temp.products_base
-         INNER JOIN temp."t_productsData" USING ("productId")
+FROM staging.products_base
+         INNER JOIN staging."t_productsData" USING ("productId")
 LIMIT 10000;
 
 
-ALTER TABLE temp.products_base
-    ADD "productsData" temp."productsData"[];
+ALTER TABLE staging.products_base
+    ADD "productsData" staging.t_productsData[];
 
-ALTER TABLE temp.products_base
-    ADD "productStatuses" temp."productStatuses"[];
+ALTER TABLE staging.products_base
+    ADD "productStatuses" staging."productStatuses"[];
 
 
 
-UPDATE temp.products_base
+UPDATE staging.products_base
 SET "productsData"= upd."productsData"
-FROM temp."t_productsData" upd
+FROM staging."t_productsData" upd
 WHERE products_base."productId" = upd."productId";
 
 SELECT PG_TERMINATE_BACKEND(5018);
 
 
-DROP TABLE IF EXISTS temp.products;
-CREATE TABLE temp.products AS
+DROP TABLE IF EXISTS staging.productsFull;
+CREATE TABLE staging.products AS
 SELECT *
-FROM temp.products_base
-         LEFT OUTER JOIN temp."t_productsData" USING ("productId")
-         LEFT OUTER JOIN temp."t_productStatuses" USING ("productId");
+FROM staging.products_base
+         LEFT OUTER JOIN staging."t_productsData" USING ("productId")
+         LEFT OUTER JOIN staging."t_productStatuses" USING ("productId");
 
 
 SELECT DBLINK_CONNECT('test_conn', 'dbname=brandnudge-dev user=postgres password=fPQWtdGp2zMe4NNr');
 SELECT DBLINK_EXEC('test_conn', 'SET work_mem TO ''2GB'';');
-SELECT DBLINK_SEND_QUERY('test_conn', 'CREATE TABLE temp.products AS
+SELECT DBLINK_SEND_QUERY('test_conn', 'CREATE TABLE staging.products AS
 WITH products AS (SELECT id AS "productId",
                          "sourceType",
                          ean,
@@ -53,7 +53,7 @@ WITH products AS (SELECT id AS "productId",
                          "basePrice"::money,
                          "shelfPrice"::money
                   FROM products),
-     pd AS (SELECT "productId", ARRAY_AGG(pd:: temp."productsData") AS "productsData"
+     pd AS (SELECT "productId", ARRAY_AGG(pd:: staging.t_productsData) AS "productsData"
             FROM "productsData"
                      CROSS JOIN LATERAL (SELECT category,
                                                 "categoryType",
@@ -67,7 +67,7 @@ WITH products AS (SELECT id AS "productId",
                                                 "taxonomyId") pd
             GROUP BY "productId"),
      ps AS (SELECT "productId",
-                   ARRAY_AGG(ps::temp."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
+                   ARRAY_AGG(ps::staging."productStatuses" ORDER BY ps."createdAt" ASC) AS "productStatuses"
             FROM "productStatuses"
                      CROSS JOIN LATERAL (SELECT status,
                                                 screenshot,
