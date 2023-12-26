@@ -15,11 +15,35 @@ WITH status AS (WITH status AS (SELECT "coreProductId",
                        is_delisted
                 FROM status
                 WHERE row_num = 1),
-     ranking AS (SELECT "coreProductId"                                      AS id,
+     ranking AS (WITH products AS (SELECT "coreProductId",
+                                          "retailerId",
+                                          date,
+                                          category,
+                                          "categoryType",
+                                          "parentCategory",
+                                          "productRank",
+                                          "sourceCategoryId",
+                                          featured,
+                                          "featuredRank",
+                                          "taxonomyId",
+
+                                          LAG("productRank")
+                                          OVER (PARTITION BY "coreProductId", "retailerId", category, "sourceCategoryId" ORDER BY DATE) AS "prev_productRank",
+                                          LAG("featuredRank")
+                                          OVER (PARTITION BY "coreProductId", "retailerId", category, "sourceCategoryId" ORDER BY DATE) AS "prev_featuredRank"
+
+                                   FROM "productsData"
+                                            INNER JOIN (SELECT id AS "productId",
+                                                               "coreProductId",
+                                                               "retailerId",
+                                                               date
+                                                        FROM products) AS products
+                                                       USING ("productId"))
+                 SELECT "coreProductId"                                      AS id,
                         "retailerId",
                         ARRAY_AGG((
-                                   date,
-                                   category,
+                                   DATE,
+                                   CATEGORY,
                                    "categoryType",
                                    "parentCategory",
                                    "productRank",
@@ -27,27 +51,37 @@ WITH status AS (WITH status AS (SELECT "coreProductId",
                                    featured,
                                    "featuredRank",
                                    "taxonomyId"
-                                      )::product_ranking ORDER BY date DESC) AS ranking
-                 FROM "productsData"
-                          INNER JOIN (SELECT id AS "productId",
-                                             "coreProductId",
-                                             "retailerId",
-                                             date
-                                      FROM products) AS products
-                                     USING ("productId")
-                 GROUP BY "coreProductId",
-                          "retailerId"),
-     pricing AS (SELECT "coreProductId"                                                               AS id,
+                                      )::product_ranking ORDER BY DATE DESC) AS ranking
+                 FROM products
+                 WHERE "productRank" IS DISTINCT FROM "prev_productRank"
+                    OR "featuredRank" IS DISTINCT FROM "prev_featuredRank"
+                 GROUP BY "coreProductId", "retailerId"),
+     pricing AS (WITH products AS (SELECT "coreProductId",
+                                          "retailerId",
+                                          DATE,
+                                          "basePrice",
+                                          "shelfPrice",
+                                          "promotedPrice",
+                                          LAG("basePrice")
+                                          OVER (PARTITION BY "coreProductId", "retailerId" ORDER BY DATE) AS "prev_basePrice",
+                                          LAG("shelfPrice")
+                                          OVER (PARTITION BY "coreProductId", "retailerId" ORDER BY DATE) AS "prev_shelfPrice",
+                                          LAG("promotedPrice")
+                                          OVER (PARTITION BY "coreProductId", "retailerId" ORDER BY DATE) AS "prev_promotedPrice"
+                                   FROM products)
+                 SELECT "coreProductId"                                                      AS id,
                         "retailerId",
                         ARRAY_AGG((date,
-                                   products."promotedPrice",
-                                   products."basePrice",
-                                   products."shelfPrice")::public.product_pricing ORDER BY date DESC) AS pricing
+                                   "promotedPrice",
+                                   "basePrice",
+                                   "shelfPrice")::public.product_pricing ORDER BY date DESC) AS pricing
                  FROM products
-                 GROUP BY "coreProductId",
-                          "retailerId")
+                 WHERE "basePrice" IS DISTINCT FROM "prev_basePrice"
+                    OR "shelfPrice" IS DISTINCT FROM "prev_shelfPrice"
+                    OR "promotedPrice" IS DISTINCT FROM "prev_promotedPrice"
+                 GROUP BY "coreProductId", "retailerId")
 SELECT *
 FROM "coreProducts"
          INNER JOIN pricing USING (id)
          LEFT OUTER JOIN status USING (id, "retailerId")
-         LEFT OUTER JOIN ranking USING (id, "retailerId")
+         LEFT OUTER JOIN ranking USING (id, "retailerId");
