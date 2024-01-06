@@ -111,15 +111,17 @@ FROM tests.promotions_w_pricing prom
                                                     AND pr.period && selected_promotion_period
                                                   GROUP BY "coreProductId")
 
-/*
-                              SELECT JSONB_AGG(TO_JSONB("coreProducts") ||
-                                               JSONB_BUILD_OBJECT('pricing', pricing_period)) AS products
+                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT('coreProductId', "coreProducts".id,
+                                                                  'title', "coreProducts"."title",
+                                                                  'image', "coreProducts"."image",
+                                                                  'brandId', "coreProducts"."brandId",
+                                                                  'categoryId', "coreProducts"."categoryId",
+                                                                  'productGroupId', "coreProducts"."productGroupId",
+                                                                  'pricing', pricing_period)) AS products
                               FROM agg_period
                                        INNER JOIN "coreProducts" ON "coreProductId" = "coreProducts".id
 
- */
-                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT("coreProductId", pricing_period)) AS products
-                              FROM agg_period
+    --SELECT JSONB_AGG(JSONB_BUILD_OBJECT("coreProductId", pricing_period)) AS products                              FROM agg_period
 
     ) AS pr
 

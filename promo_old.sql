@@ -1,4 +1,6 @@
-with response as (SELECT "product"."id",
+-- do we need all the attributes?
+
+with results as (SELECT "product"."id",
        "product"."productTitle",
        "product"."promotedPrice",
        "product"."basePrice",
@@ -105,5 +107,43 @@ WHERE "product"."coreProductId" IN
   --AND "product"."dateId" IN      (18628, 18661, 18694, 18727, 18760, 18793, 18826, 18859, 18892, 18925, 18958, 18991, 19024, 19057, 19090)
   AND "product".date BETWEEN '2023-11-01' and '2023-11-15'
   AND "product"."retailerId" IN ('81', '1', '2', '3', '9', '11', '8', '10'))
-select json_agg(response)
-from response
+select json_agg(results)
+from results;
+
+
+-- with less attributes executes in 1s
+with results as (SELECT
+       "product"."promotedPrice",
+       "product"."basePrice",
+       "product"."coreProductId",
+       "product"."date",
+       "productPromotions"."promoId"                                         AS "productPromotions.promoId",
+       "productPromotions"."description"                                     AS "productPromotions.description",
+       "productPromotions"."startDate"                                       AS "productPromotions.startDate",
+       "productPromotions"."endDate"                                         AS "productPromotions.endDate",
+       "productPromotions->retailerPromotion"."promotionMechanicId"          AS "productPromotions.retailerPromotion.promotionMechanicId",
+       "coreProduct"."title"                                                 AS "coreProduct.title",
+       "coreProduct"."image"                                                 AS "coreProduct.image",
+       "coreProduct"."brandId"                                               AS "coreProduct.brandId",
+       "coreProduct"."categoryId"                                            AS "coreProduct.categoryId"
+FROM "products" AS "product"
+         INNER JOIN "promotions" AS "productPromotions" ON "product"."id" = "productPromotions"."productId"
+         INNER JOIN "retailerPromotions" AS "productPromotions->retailerPromotion"
+                    ON "productPromotions"."retailerPromotionId" = "productPromotions->retailerPromotion"."id"
+         INNER JOIN "coreProducts" AS "coreProduct"
+                    ON "product"."coreProductId" = "coreProduct"."id" AND "coreProduct"."productOptions" = FALSE
+WHERE "product"."coreProductId" IN
+      ('1754', '4064', '4298', '4299', '4300', '4304', '4331', '4364', '4372', '4373', '4377', '4483', '4572', '4657',
+       '4691', '5015', '11317', '11564', '11566', '11579', '14398', '16546', '16547', '16548', '16936', '19032',
+       '20084', '20581', '20598', '21753', '21806', '22836', '24269', '24923', '26148', '26155', '26349', '37606',
+       '38006', '42148', '42763', '43008', '44825', '45525', '45750', '45912', '48006', '52635', '62359', '62361',
+       '63173', '63192', '64020', '69967', '82042', '82046', '120284', '120336', '240260', '240264', '277565', '311911',
+       '317558', '317560', '317562', '364807', '364818', '442818', '486859', '496581', '541845', '541846', '542649',
+       '543683', '547213', '547214', '561431', '561432', '566211', '641051', '729377', '729379', '731701', '737617',
+       '737618', '737619', '739687', '739689', '739703', '739705', '739709', '765926', '780436', '781601', '784964',
+       '784965', '790677', '793114', '849813', '863968', '879772', '879773')
+  --AND "product"."dateId" IN      (18628, 18661, 18694, 18727, 18760, 18793, 18826, 18859, 18892, 18925, 18958, 18991, 19024, 19057, 19090)
+  AND "product".date BETWEEN '2023-11-01' and '2023-11-15'
+  AND "product"."retailerId" IN ('81', '1', '2', '3', '9', '11', '8', '10'))
+select  json_agg(results)
+from results
