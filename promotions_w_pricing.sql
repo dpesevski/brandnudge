@@ -3,7 +3,7 @@ CREATE TYPE public.product_promo_pricing AS
 (
     "coreProductId" integer,
     period          daterange,
-    "shelfPrice"    float,
+    "shelfPrice"    float, -- maybe keep it everywhere as an array to avoid to array transformation
     "basePrice"     float,
     "promotedPrice" float
 );
@@ -95,13 +95,11 @@ FROM tests.promotions_w_pricing prom
         AND prom."coreProductId" && selected_products
     )
     /*
-         CROSS JOIN LATERAL ( SELECT ARRAY_AGG(pr) AS filtered_pricing
+         CROSS JOIN LATERAL ( SELECT ARRAY_AGG(pr) AS products
                               FROM UNNEST(pricing) AS pr
                               WHERE params.selected_products @> ARRAY [pr."coreProductId"]
                                 AND pr.period && selected_promotion_period
     ) AS pr
-
-
  */
          CROSS JOIN LATERAL ( WITH agg_period AS (SELECT "coreProductId",
                                                          JSONB_AGG(JSONB_BUILD_OBJECT(period,
@@ -110,16 +108,24 @@ FROM tests.promotions_w_pricing prom
                                                   WHERE params.selected_products @> ARRAY [pr."coreProductId"]
                                                     AND pr.period && selected_promotion_period
                                                   GROUP BY "coreProductId")
-                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT("coreProductId", pricing_period)) AS filtered_pricing
-                              FROM agg_period
-    ) AS pr
 
+/*
+                              SELECT JSONB_AGG(TO_JSONB("coreProducts") ||
+                                               JSONB_BUILD_OBJECT('pricing', pricing_period)) AS products
+                              FROM agg_period
+                                       INNER JOIN "coreProducts" ON "coreProductId" = "coreProducts".id
+
+ */
+                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT('pricing', pricing_period)) AS products
+                              FROM agg_period
+
+    ) AS pr
 
          CROSS JOIN LATERAL (SELECT "retailerId",
                                     "promoId",
                                     "promotionMechanicId",
                                     description,
                                     promotion_period,
-                                    pr.filtered_pricing
+                                    pr.products
     ) AS results
-WHERE pr.filtered_pricing IS NOT NULL;
+WHERE pr.products IS NOT NULL;
