@@ -1,4 +1,16 @@
 SELECT *
+FROM promotions
+WHERE "promoId" = '1071_11097871_2°_al_70%_de_descuento_11/3/2023';
+SELECT *
+FROM tests.promotions_w_pricing
+WHERE "retailerId" = 1071
+  AND "promoId" = '1071_11097871_2°_al_70%_de_descuento_11/3/2023';
+SELECT *
+FROM tests.promotions_v2
+WHERE "retailerId" = 1071
+  AND "promoId" = '1071_11097871_2°_al_70%_de_descuento_11/3/2023';
+
+SELECT *
 FROM tests.promotions
 WHERE "retailerId" IN (1, 2, 3, 9, 11, 8, 10)
   AND "coreProductId" &&

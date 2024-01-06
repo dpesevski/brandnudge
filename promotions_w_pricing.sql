@@ -76,6 +76,18 @@ WHERE NOT ("endDate" < "startDate")
 GROUP BY "retailerId",
          "promoId";
 
+ALTER TABLE tests.promotions_v2
+    ADD CONSTRAINT promotions_v2_pk
+        PRIMARY KEY ("retailerId", "promoId");
+
+CREATE INDEX IF NOT EXISTS promotions_v2_retailerid_promotion_period_index
+    ON tests.promotions_w_pricing ("retailerId", promotion_period);
+
+CREATE INDEX IF NOT EXISTS promotions_v2_coreproductid_index
+    ON tests.promotions_w_pricing USING gin ("coreProductId");
+
+
+
 WITH params(selected_products,
             selected_retailers,
             selected_promotion_period)
