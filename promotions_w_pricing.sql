@@ -42,7 +42,7 @@ WITH products AS (SELECT id                           AS "productId",
                       COALESCE(fn_to_date(MAX(promotions."endDate")),
                                MAX(promotions."updatedAt")::date) AS "endDate",
                       DATERANGE(MIN(products.date),
-                                MAX(products.date))               AS pricing_period,
+                                MAX(products.date), '[]')         AS pricing_period,
 
                       products."shelfPrice",
                       products."basePrice",
@@ -87,28 +87,39 @@ WITH params(selected_products, selected_retailers, selected_promotion_period)
                          784965, 790677, 793114, 849813, 863968, 879772, 879773],
                      ARRAY [1, 2, 3, 9, 11, 8, 10],
                      DATERANGE('2023-11-01', '2023-11-15')))
-SELECT JSON_AGG(results) AS results
+SELECT JSONB_AGG(results) AS results
 FROM tests.promotions_w_pricing prom
          INNER JOIN params ON (
     "retailerId" = ANY (selected_retailers)
         AND promotion_period && selected_promotion_period
         AND prom."coreProductId" && selected_products
     )
-         CROSS JOIN LATERAL (
-    WITH agg_period AS (SELECT "coreProductId",
-                               JSONB_AGG(JSON_BUILD_OBJECT(period,
-                                                           ARRAY [ "shelfPrice", "basePrice", "promotedPrice"])) AS pricing_period
-                        FROM UNNEST(pricing) AS pr
-                        WHERE params.selected_products @> ARRAY [pr."coreProductId"]
-                          AND pr.period && selected_promotion_period
-                        GROUP BY "coreProductId")
-    SELECT JSONB_AGG(JSON_BUILD_OBJECT("coreProductId", pricing_period)) AS pricing
-    FROM agg_period
+    /*
+         CROSS JOIN LATERAL ( SELECT ARRAY_AGG(pr) AS filtered_pricing
+                              FROM UNNEST(pricing) AS pr
+                              WHERE params.selected_products @> ARRAY [pr."coreProductId"]
+                                AND pr.period && selected_promotion_period
     ) AS pr
+
+
+ */
+         CROSS JOIN LATERAL ( WITH agg_period AS (SELECT "coreProductId",
+                                                         JSONB_AGG(JSONB_BUILD_OBJECT(period,
+                                                                                      ARRAY [ "shelfPrice", "basePrice", "promotedPrice"])) AS pricing_period
+                                                  FROM UNNEST(pricing) AS pr
+                                                  WHERE params.selected_products @> ARRAY [pr."coreProductId"]
+                                                    AND pr.period && selected_promotion_period
+                                                  GROUP BY "coreProductId")
+                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT("coreProductId", pricing_period)) AS filtered_pricing
+                              FROM agg_period
+    ) AS pr
+
+
          CROSS JOIN LATERAL (SELECT "retailerId",
                                     "promoId",
                                     "promotionMechanicId",
                                     description,
                                     promotion_period,
-                                    pr.pricing
-    ) AS results;
+                                    pr.filtered_pricing
+    ) AS results
+WHERE pr.filtered_pricing IS NOT NULL;
