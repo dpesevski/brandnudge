@@ -23,7 +23,7 @@ CREATE TYPE public.product_promo_pricing_v2 AS
 );
 
 
-CREATE TABLE tests.promotions_w_pricing AS
+CREATE TABLE tests.promotions_v2 AS
 WITH products AS (SELECT id                           AS "productId",
                          date::date,
                          "coreProductId",
@@ -65,7 +65,7 @@ SELECT "retailerId",
        ARRAY_AGG(DISTINCT "coreProductId")                          AS "coreProductId",
        MIN("promotionMechanicId")                                   AS "promotionMechanicId",
        MIN(description)                                             AS description,
-       DATERANGE(MIN("startDate"), MIN("endDate"))                  AS promotion_period,
+       DATERANGE(MIN("startDate"), MAX("endDate"), '[]')            AS promotion_period,
        ARRAY_AGG(DISTINCT ("coreProductId",
                            pricing_period,
                            "shelfPrice",
@@ -75,7 +75,9 @@ FROM agg_1
 GROUP BY "retailerId",
          "promoId";
 
-WITH params(selected_products, selected_retailers, selected_promotion_period)
+WITH params(selected_products,
+            selected_retailers,
+            selected_promotion_period)
          AS (VALUES (ARRAY [1754, 4064, 4298, 4299, 4300, 4304, 4331, 4364, 4372, 4373, 4377, 4483, 4572, 4657,
                          4691, 5015, 11317, 11564, 11566, 11579, 14398, 16546, 16547, 16548, 16936, 19032,
                          20084, 20581, 20598, 21753, 21806, 22836, 24269, 24923, 26148, 26155, 26349, 37606,
@@ -116,7 +118,7 @@ FROM tests.promotions_w_pricing prom
                                        INNER JOIN "coreProducts" ON "coreProductId" = "coreProducts".id
 
  */
-                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT('pricing', pricing_period)) AS products
+                              SELECT JSONB_AGG(JSONB_BUILD_OBJECT("coreProductId", pricing_period)) AS products
                               FROM agg_period
 
     ) AS pr
