@@ -72,6 +72,7 @@ SELECT "retailerId",
                            "basePrice",
                            "promotedPrice")::product_promo_pricing) AS pricing
 FROM agg_1
+WHERE NOT ("endDate" < "startDate")
 GROUP BY "retailerId",
          "promoId";
 
