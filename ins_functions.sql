@@ -1,3 +1,19 @@
+CREATE OR REPLACE FUNCTION "ins_sourceCategories"(IN "p_coreProductId" integer,
+                                                     IN "p_barcode" character varying(255),
+                                                     IN "p_createdAt" timestamp WITH TIME ZONE,
+                                                     IN "p_updatedAt" timestamp WITH TIME ZONE,
+                                                     OUT response "coreProductBarcodes",
+                                                     OUT sequelize_caught_exception text) RETURNS RECORD AS
+$$
+BEGIN
+    INSERT INTO "sourceCategories" ("id", "coreProductId", "barcode", "createdAt", "updatedAt")
+    VALUES (DEFAULT, "p_coreProductId", "p_barcode", "p_createdAt", "p_updatedAt")
+    RETURNING * INTO response;
+EXCEPTION
+    WHEN unique_violation THEN GET STACKED DIAGNOSTICS sequelize_caught_exception = PG_EXCEPTION_DETAIL;
+END
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION "ins_coreProductBarcodes"(IN "p_coreProductId" integer,
                                                      IN "p_barcode" character varying(255),
                                                      IN "p_createdAt" timestamp WITH TIME ZONE,
