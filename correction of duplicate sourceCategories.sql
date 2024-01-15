@@ -12,74 +12,60 @@ FROM all_rec
 WHERE rownum = 1;
 
 CREATE TABLE "_corrected_coreProductSourceCategories" AS
-WITH corrections AS (
-    UPDATE "coreProductSourceCategories"
-        SET "sourceCategoryId" = upd.id
-        FROM "_tmp_wrong_sourceCategories" upd
-        WHERE "sourceCategoryId" = ANY (wrong_ids)
-        RETURNING "coreProductSourceCategories".*)
-SELECT *
-FROM corrections;
+SELECT "coreProductSourceCategories".*
+FROM "coreProductSourceCategories"
+         INNER JOIN "_tmp_wrong_sourceCategories" upd
+                    ON ("sourceCategoryId" = ANY (wrong_ids));
 
-
-
-/*  TO DO FROM HERE ON
-
-    1. Can we have the backup _corrected_productsData?
-    2. drop the referential FK constraints of the 3 tables to the sourceCategories, before deleting the records
-*/
-
-
+UPDATE "coreProductSourceCategories"
+SET "sourceCategoryId" = upd.id
+FROM "_tmp_wrong_sourceCategories" upd
+WHERE "sourceCategoryId" = ANY (wrong_ids);
 
 CREATE TABLE "_corrected_productsData" AS
-WITH corrections AS (
-    UPDATE "productsData"
-        SET "sourceCategoryId" = upd.id
-        FROM "_tmp_wrong_sourceCategories" upd
-        WHERE "sourceCategoryId" = ANY (wrong_ids)
-        RETURNING "productsData".*)
-SELECT *
-FROM corrections;
+SELECT "productsData".*
+FROM "productsData"
+         INNER JOIN "_tmp_wrong_sourceCategories" upd
+                    ON ("sourceCategoryId" = ANY (wrong_ids));
+
+WITH upd AS (SELECT "_corrected_productsData".id, "_tmp_wrong_sourceCategories".id AS "sourceCategoryId"
+             FROM "_corrected_productsData"
+                      INNER JOIN "_tmp_wrong_sourceCategories" ON ("sourceCategoryId" = ANY (wrong_ids)))
+UPDATE "productsData"
+SET "sourceCategoryId" = upd."sourceCategoryId"
+FROM upd
+WHERE "productsData".id = upd.id;
 
 
-/*
+ALTER TABLE "productsData"
+    DROP CONSTRAINT "productsData_sourceCategoryId_fkey";
+
+ALTER TABLE "coreProductSourceCategories"
+    DROP CONSTRAINT "coreProductSourceCategories_sourceCategoryId_fkey";
+
+ALTER TABLE "companySourceCategories"
+    DROP CONSTRAINT "companySourceCategories_sourceCategoryId_fkey";
+
 CREATE TABLE "_corrected_sourceCategories" AS
 WITH corrections AS (
     DELETE FROM "sourceCategories"
         USING "_tmp_wrong_sourceCategories" upd
-        WHERE id = ANY (wrong_ids)
+        WHERE "sourceCategories".id = ANY (wrong_ids)
         RETURNING "sourceCategories".*)
 SELECT *
 FROM corrections;
-*/
-CREATE TABLE "_corrected_removed_sourceCategories" AS
-SELECT *
-FROM "sourceCategories"
-WHERE "sourceCategories".id IN
-      (756, 703, 4470, 776, 788, 720, 4465, 1820, 535, 497, 606, 404, 766, 4467, 503, 592, 638, 749, 609, 546,
-       634, 742, 649, 485, 678, 4472, 458, 752, 696, 4477, 574, 682, 10899, 10900, 10901, 10902);
-
-DELETE
-FROM "sourceCategories"
-WHERE "sourceCategories".id IN
-      (756, 703, 4470, 776, 788, 720, 4465, 1820, 535, 497, 606, 404, 766, 4467, 503, 592, 638, 749, 609, 546,
-       634, 742, 649, 485, 678, 4472, 458, 752, 696, 4477, 574, 682, 10899, 10900, 10901, 10902);
-
 
 ALTER TABLE "sourceCategories"
     ADD CONSTRAINT sourceCategories_pk
         UNIQUE (name, type);
 
 
+ALTER TABLE public."productsData"
+    ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
 
-SELECT COUNT(*)
-FROM "_corrected_productsData";
-SELECT *
-FROM "_corrected_coreProductSourceCategories";
+ALTER TABLE public."coreProductSourceCategories"
+    ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
 
-/*
-/*reccount=0*/
-SELECT *
-FROM tmp_upd_dup
-         INNER JOIN "coreProductSourceCategories" ON "sourceCategoryId" = ANY (wrong_ids);
- */
+ALTER TABLE public."companySourceCategories"
+    ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
+
