@@ -22,6 +22,18 @@ SET "sourceCategoryId" = upd.id
 FROM "_tmp_wrong_sourceCategories" upd
 WHERE "sourceCategoryId" = ANY (wrong_ids);
 
+
+CREATE TABLE "_corrected_userSourceCategories" AS
+SELECT "userSourceCategories".*
+FROM "userSourceCategories"
+         INNER JOIN "_tmp_wrong_sourceCategories" upd
+                    ON ("sourceCategoryId" = ANY (wrong_ids));
+
+UPDATE "userSourceCategories"
+SET "sourceCategoryId" = upd.id
+FROM "_tmp_wrong_sourceCategories" upd
+WHERE "sourceCategoryId" = ANY (wrong_ids);
+
 CREATE TABLE "_corrected_productsData" AS
 SELECT "productsData".*
 FROM "productsData"
