@@ -71,6 +71,9 @@ ALTER TABLE "sourceCategories"
     ADD CONSTRAINT sourceCategories_pk
         UNIQUE (name, type);
 
+ALTER TABLE public."userSourceCategories"
+    ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
+
 ALTER TABLE public."productsData"
     ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
 
@@ -79,4 +82,5 @@ ALTER TABLE public."coreProductSourceCategories"
 
 ALTER TABLE public."companySourceCategories"
     ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
+
 
