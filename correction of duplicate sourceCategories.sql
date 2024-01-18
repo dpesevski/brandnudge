@@ -83,4 +83,33 @@ ALTER TABLE public."coreProductSourceCategories"
 ALTER TABLE public."companySourceCategories"
     ADD FOREIGN KEY ("sourceCategoryId") REFERENCES public."sourceCategories";
 
+"userSourceCategories" --2021-02-22 19:14:24.707684 +00:0
 
+coreProductSourceCategories
+SELECT *
+FROM "companySourceCategories" --2021-02-22 19:14:24.707684 +00:0
+ORDER BY "updatedAt" DESC;
+
+SELECT *
+FROM "productsData";
+
+SELECT id, category, "categoryType"
+FROM "retailerTaxonomies"
+WHERE id = 23689
+
+
+
+SELECT *
+FROM "sourceCategories"
+WHERE "name" = 'Facial skincare';
+SELECT *
+FROM "retailerTaxonomies"
+WHERE "category" = 'Facial skincare';
+
+WITH productsData_analysis AS (SELECT "taxonomyId", category, "categoryType", "sourceCategoryId", COUNT(*)
+                               FROM "productsData"
+                               WHERE "category" = 'Facial skincare'
+                               GROUP BY "taxonomyId", category, "categoryType", "sourceCategoryId")
+SELECT *
+FROM productsData_analysis
+         INNER JOIN "sourceCategories" ON ("sourceCategoryId" = "sourceCategories".id)
