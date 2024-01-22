@@ -3235,7 +3235,48 @@ export default class ProductService {
             await db.review.findOrCreate({ where: value, defaults: value });
         }
     }
-
+    static async fetchWaitroseProductEAN(sourceId, retry = 0) {
+        if (retry >= 10) return sourceId;
+        try {
+            const ean = await new Promise((resolve, reject) => {
+                const link = '';
+                const url = link.replace(/:id/, sourceId.split('-')[0]);
+                console.log(`[fetchWaitroseProductEAN] URL: \n${url}`);
+                https
+                    .get(url, resp => {
+                        if (resp.statusCode !== 200) {
+                            return reject(new Error('Request failure!'));
+                        }
+                        let data = '';
+                        resp.on('data', chunk => {
+                            data += chunk;
+                        });
+                        resp.on('end', () => {
+                            const response = JSON.parse(data);
+                            if (
+                                !response.BatchedResults ||
+                                !response.BatchedResults.q0 ||
+                                !response.BatchedResults.q0.Results.length
+                            ) {
+                                return reject(
+                                    new Error(`Wrong response! ${JSON.stringify(response)}`),
+                                );
+                            }
+                            const { EANs } = response.BatchedResults.q0.Results[0];
+                            resolve(EANs.length ? EANs[0] : false);
+                        });
+                    })
+                    .on('error', e => {
+                        reject(e);
+                    });
+            });
+            console.log(`[fetchWaitroseProductEAN] EAN: ${ean}(${sourceId})`);
+            return ean;
+        } catch (e) {
+            console.error(e);
+            return this.fetchWaitroseProductEAN(sourceId, retry + 1);
+        }
+    }
     static async resolveMSConflict() {
         let ms = 'M&S';
         const msEANRegExp = /^M[0-9]{4,8}S$/;
