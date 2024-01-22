@@ -1,4 +1,377 @@
-export default class PromotionService extends Service {
+import moment from 'moment';
+import { Op } from 'sequelize';
+import db from '../models';
+
+const defaultMechanic = 'Other';
+
+function textToNumber(str) {
+    const numMap = {
+        one: 1,
+        two: 2,
+        three: 3,
+        four: 4,
+        five: 5,
+        six: 6,
+        seven: 7,
+        eight: 8,
+        nine: 9,
+        ten: 10,
+    };
+
+    return Object.keys(numMap).reduce(
+        (res, text) => res.replace(new RegExp(text, 'gi'), numMap[text]),
+        str,
+    );
+}
+
+function numPrice(price) {
+    if (!price) return 1;
+    if (!isNaN(price)) return price;
+    if (price.includes('£')) return parseFloat(price.split('£')[1]).toFixed(2);
+    else if (price.includes('p'))
+        return parseFloat(price.split('p')[0] / 100).toFixed(2);
+    return price;
+}
+
+function parseDate(d) {
+    try {
+        if (!d) return null;
+        if (Date.parse(d)) return new Date(d).toLocaleDateString();
+        // eslint-disable-next-line no-useless-escape
+        const arr = d.split(/[-\/.]/);
+        if (arr.length !== 3) return false;
+        const month = arr[1] - 1;
+        const year = arr[0].length === 4 ? arr[0] : arr[2];
+        const date = arr[0].length === 4 ? arr[2] : arr[0];
+        return new Date(year, month, date).toLocaleDateString();
+    } catch (e) {
+        console.error('parseDate failure!', e);
+        return null;
+    }
+}
+
+export default class PromotionService {
+    /**
+     * Create wrapper for retailer promotion search function
+     * @param retailerId
+     * @returns {Promise<function(*): Promise<boolean|{[p: string]: *}>>}
+     */
+    static async findRetailerPromotion(retailerId) {
+        const retailerPromotions = await db.retailerPromotion.findAll({
+            where: { retailerId },
+            include: ['promotionMechanic'],
+        });
+        return async promotion => {
+            const desc = textToNumber(
+                promotion.description.replace(',', '').toLowerCase(),
+            );
+            let promo = retailerPromotions.find(item => {
+                if (!item.promotionMechanic) return false;
+                if (
+                    item.promotionMechanic.name.toLowerCase() ===
+                    (promotion.mechanic || '').toLowerCase()
+                )
+                    return true;
+                if (!item.regexp || !item.regexp.length) return false;
+                if (
+                    item.promotionMechanic.name === 'Multibuy' &&
+                    /(\d+\/\d+)/.test(desc)
+                ) {
+                    return false;
+                }
+                return new RegExp(item.regexp, 'i').test(desc);
+            });
+            let mechanic = promo
+                ? promo.promotionMechanic
+                : { name: defaultMechanic };
+            if (!promo) {
+                [mechanic] = await db.promotionMechanic.findOrCreate({
+                    where: { name: defaultMechanic },
+                    defaults: { name: defaultMechanic },
+                });
+                // eslint-disable-next-line no-continue
+                if (!mechanic) return false;
+                const obj = {
+                    retailerId: retailerId,
+                    promotionMechanicId: mechanic.id,
+                };
+                [promo] = await db.retailerPromotion.findOrCreate({
+                    where: obj,
+                    defaults: obj,
+                });
+            }
+            return { ...promo.toJSON(), mechanic };
+        };
+    }
+
+    /**
+     * Generate default promoId for promotion
+     * @param product
+     * @param promotion
+     * @returns {string}
+     */
+    static getDefaultPromoId(product, promotion) {
+        const { retailerId, sourceId } = product;
+        const { startDate, description } = promotion;
+        return `${retailerId}_${sourceId}_${description}_${startDate}`.replace(
+            / /g,
+            '_',
+        );
+    }
+
+    static getPromoKey(promotions, product, promotion, promoId) {
+        let promotionKey = `${promoId}_${promotion.retailerPromotionId}_${promotion.description}`;
+        if (!promotion.promoId) {
+            for (const key of Object.keys(promotions)) {
+                if (
+                    key.includes(
+                        `${product.retailerId}_${product.sourceId}_${promotion.description}`,
+                    )
+                ) {
+                    promotionKey = key;
+                    break;
+                }
+            }
+        }
+        return promotionKey;
+    }
+
+    /**
+     * Compare current and previous product promotions, and change promoId and promo period
+     * @param promotion
+     * @param data
+     * @param product
+     * @returns {Promise<*>}
+     */
+    static async comparePromotionWithPreviousProduct(promotion, data, product) {
+        const result = { ...data };
+        const {
+            id: productId,
+            sourceId,
+            retailerId,
+            coreProductId,
+            dateId,
+        } = product;
+        const prevProduct = await db.product.findOne({
+            where: {
+                sourceId,
+                retailerId,
+                coreProductId,
+                id: { [Op.not]: productId },
+                dateId: { [Op.lt]: dateId },
+            },
+            include: ['productPromotions'],
+            order: [['date', 'desc']],
+        });
+
+        if (prevProduct && prevProduct.productPromotions.length) {
+            const start = moment(data.startDate);
+            const end = moment(data.endDate);
+            for (const prevPromo of prevProduct.productPromotions) {
+                const prevStart = parseDate(
+                    prevPromo.startDate || prevProduct.date || prevPromo.createdAt,
+                );
+                const prevEnd = parseDate(
+                    prevPromo.endDate || prevProduct.date || prevPromo.createdAt,
+                );
+                const prevPromoId = PromotionService.getDefaultPromoId(product, {
+                    ...promotion,
+                    startDate: prevPromo.startDate,
+                });
+                const prevPromoDefaultId = PromotionService.getDefaultPromoId(
+                    product,
+                    prevPromo,
+                );
+                // check and change promoId
+                if (!promotion.promoId) {
+                    if (prevPromoId === prevPromoDefaultId) {
+                        if (!prevPromo.promoId) {
+                            prevPromo.promoId = `${prevPromoDefaultId}`;
+                            await prevPromo.save();
+                        }
+                        result.promoId = prevPromo.promoId;
+                    }
+                } else if (!prevPromo.promoId) {
+                    if (prevPromoId === prevPromoDefaultId) {
+                        prevPromo.promoId = data.promoId;
+                        await prevPromo.save();
+                    }
+                } else if (prevPromo.promoId === prevPromoId) {
+                    prevPromo.promoId = data.promoId;
+                    await prevPromo.save();
+                }
+                // check and change start/end dates
+                if (prevPromo.promoId === result.promoId) {
+                    if (moment(prevStart).isBefore(start)) result.startDate = prevStart;
+                    if (moment(prevEnd).isAfter(end)) result.endDate = prevEnd;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Process and save product promotions
+     * @param promotions
+     * @param product
+     * @returns {Promise<[]>}
+     */
+    static async processProductPromotions(promotions, product) {
+        const result = [];
+        if (!promotions || !product) return result;
+        const findRetailerPromotion = await PromotionService.findRetailerPromotion(
+            product.retailerId,
+        );
+        for (const promotion of promotions.filter(Boolean)) {
+            try {
+                const promo = await findRetailerPromotion(promotion);
+                if (!promo) continue;
+                const startDate = parseDate(promotion.startDate || product.date);
+                const endDate = parseDate(promotion.endDate || product.date);
+                const promoId =
+                    promotion.promoId ||
+                    PromotionService.getDefaultPromoId(product, {
+                        ...promotion,
+                        startDate,
+                    });
+                const data = {
+                    promoId: `${promoId}`,
+                    productId: product.id,
+                    retailerPromotionId: promo.id,
+                    description: promotion.description,
+                    startDate: startDate
+                        ? new Date(startDate).toLocaleDateString()
+                        : promotion.startDate,
+                    endDate: endDate
+                        ? new Date(endDate).toLocaleDateString()
+                        : promotion.endDate,
+                };
+
+                // eslint-disable-next-line max-len
+                const value = await PromotionService.comparePromotionWithPreviousProduct(
+                    promotion,
+                    data,
+                    product,
+                );
+                await db.promotion.findOrCreate({ where: value, defaults: value });
+                result.push({ ...value, mechanic: promo.mechanic.name });
+            } catch (e) {
+                console.error('Promotion create failure!', e);
+            }
+        }
+        return result;
+    }
+
+    static async createMechanic(data) {
+        return db.promotionMechanic.create(data);
+    }
+
+    static async getAllMechanics() {
+        return db.promotionMechanic.findAll();
+    }
+
+    static async getMechanic(id) {
+        return db.promotionMechanic.findOne({ where: { id } });
+    }
+
+    static async createRetailerPromotion(data) {
+        return db.retailerPromotion.create(data);
+    }
+
+    static async getAllRetailerPromotions() {
+        return db.retailerPromotion.findAll({
+            include: ['promotionMechanic', 'retailer'],
+        });
+    }
+
+    static async getRetailerPromotion(id) {
+        return db.retailerPromotion.findOne({
+            where: { id },
+            include: ['promotionMechanic', 'retailer'],
+        });
+    }
+
+    static async createPromotion(data) {
+        return db.promotion.create(data);
+    }
+
+    static async getAllPromotions() {
+        return db.promotion.findAll({
+            include: ['retailerPromotion', 'product'],
+        });
+    }
+
+    static async getPromotionsByProduct(id) {
+        return db.promotion.findAll({
+            where: { productId: id },
+            include: [
+                {
+                    model: db.retailerPromotion,
+                    as: 'retailerPromotion',
+                    include: [
+                        {
+                            model: db.promotionMechanic,
+                            as: 'promotionMechanic',
+                        },
+                    ],
+                },
+                'product',
+            ],
+        });
+    }
+
+    static async getPromotion(id) {
+        return db.promotion.findOne({
+            where: { id },
+            include: ['retailerPromotion', 'product'],
+        });
+    }
+
+    static calculateMultibuyPrice(description, price) {
+        if (!description || !price) return price;
+        let result = price;
+        const desc = textToNumber(description.replace(',', '').toLowerCase());
+
+        const isFloat = n => Number(n) === n && n % 1 !== 0;
+
+        const countAndPrice = desc.match(/£?(\d+(.\d{1,2})?|\d+\/\d+)p?/g);
+        if (!countAndPrice || !countAndPrice.length) return price;
+
+        const [count, discountPrice = '£1'] = countAndPrice;
+        const dp = numPrice(discountPrice);
+        let sum = price * count;
+
+        // "3 for 2" match
+        const forMatch = desc.match(/(\d+) for (\d+)/i);
+
+        if (forMatch) {
+            // eslint-disable-next-line no-unused-vars
+            const [match, totalCount, forCount] = forMatch;
+            sum = price * forCount;
+            result = sum / totalCount;
+        } else if (desc.includes('save')) {
+            const isPercent = desc.includes('%');
+            const halfPrice = desc.includes('half price');
+            // eslint-disable-next-line no-nested-ternary
+            const discount = isPercent ? (sum / 100) * dp : halfPrice ? sum / 2 : dp;
+            result = (sum - discount) / count;
+        } else if (desc.includes('price of')) {
+            result = (price * dp) / count;
+        } else if (desc.includes('free')) {
+            const freeCount = dp > count ? 1 : +dp;
+            result = sum / (+count + freeCount);
+        } else if (desc.includes('half price')) {
+            sum += (price / 2) * dp;
+            result = sum / (+count + +dp);
+        } else {
+            result = Math.round((dp * 100.0) / count) / 100;
+        }
+
+        result = isFloat(result) ? result.toFixed(2) : result;
+
+        return result.toString();
+    }
+
     /**
      * calendar products selection
      * @param filteredData
