@@ -1,0 +1,49 @@
+[
+    {
+        "productPrice": "1.5",
+        "productTitle": "Patak’s Garlic & Coriander Poppadoms x8",
+        "reviewsCount": "51",
+        "reviewsStars": "4.5686",
+        "originalPrice": "2.15",
+        "promotionDescription": "Nectar price £1.50",
+        "promotions": [
+            {
+                "description": "Nectar price £1.50",
+                "promoId": "10612689",
+                "startDate": "2024-01-02T00:00:00Z",
+                "endDate": "2024-01-23T00:00:00Z"
+            }
+        ],
+        "href": "https://www.sainsburys.co.uk/shop/gb/groceries/product/details/pataks-garlic-coriander-pappadums-x-8",
+        "isFeatured": false,
+        "pageNumber": 38,
+        "screenshot": "https://s3.eu-central-1.amazonaws.com/bn-production.aws.ranking-screenshots/sainsburys/See%20all%20Food%20cupboard/1704330960434",
+        "inTaxonomy": true,
+        "featuredRank": 2249,
+        "productRank": 2249,
+        "bundled": false,
+        "ean": "5011308199247",
+        "eposId": "7975258",
+        "featured": false,
+        "features": "Light and crispy. Always no artificial colours, flavours or preservatives. Vegetarian friendly. Source of fibre. Made with lentil flour",
+        "multibuy": false,
+        "nutritional": "[{\"key\":\"Energy\",\"value\":\"1891kJ/ 453kcal\"},{\"key\":\"Fat\",\"value\":\"23.4g\"},{\"key\":\"of which saturates\",\"value\":\"1.6g\"},{\"key\":\"Carbohydrate\",\"value\":\"37.1g\"},{\"key\":\"of which sugars\",\"value\":\"1.0g\"},{\"key\":\"Fibre\",\"value\":\"9.9g\"},{\"key\":\"Protein\",\"value\":\"18.5g\"},{\"key\":\"Salt\",\"value\":\"3.62g\"}]",
+        "pricePerWeight": "£2.69/100g",
+        "productBrand": "Patak's",
+        "productDescription": "Ready to Eat Restaurant Style Pappadums with Garlic and Coriander.",
+        "productImage": "https://assets.sainsburys-groceries.co.uk/gol/7975258/1/2365x2365.jpg",
+        "productInStock": true,
+        "productInfo": "Lentil Flour, Rapeseed Oil, Salt, Garlic Purée (3%), Raising Agent (Calcium Oxide), Coconut Oil, Rice Flour, Coriander Leaf, Encapsulated Garlic Oil",
+        "productTitleDetail": "Patak’s Garlic & Coriander Poppadoms x8",
+        "secondaryImages": false,
+        "size": "56",
+        "sizeUnit": "g",
+        "sourceId": "7975258",
+        "categoryType": "aisle",
+        "taxonomyId": 181373,
+        "category": "See all Food cupboard",
+        "date": "2024-01-04T00:05:00.015Z",
+        "sourceType": "sainsburys",
+        "status": "listed"
+    }
+]
