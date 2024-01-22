@@ -1,0 +1,50 @@
+createProducts
+    - ProductService.getCreateProductCommonData
+        - new db query db.dates.findOrCreate
+        - RetailerService.getRetailerByName
+            - CountryService.getCountryByISO
+                - new db query db.country.scope('withoutDates').findOne
+            - new db query db.retailer.findOne
+
+    - loop all products in the list
+        - ProductService.fetchWaitroseProductEAN, this is fetching data from a url while the update is happening. Is it possible to do this in bulk before createProducts is called?
+        - new db query db.product.findOne (sourceId, retailerId, dateId)
+        - new db query createProductsData (sel_ins_productsData)
+        - new db query createAmazonProduct (sel_ins_amazonProducts)
+        - new db query BrandService.getBrandByCheckList,  db.brands.findAll
+        - findCreateProductCore
+            - new db query db.coreProductBarcode.findOne
+            - new db query db.coreProduct.scope
+            - new db query sel_ins_coreProductBarcodes
+            - new db query core.update({ disabled: false 
+            - new db query db.coreRetailer.findOne
+            - new db query db.coreProduct.scope
+            - new db query sel_ins_coreProductBarcodes
+            - createCoreBy
+                - AWSUtil.uploadImage, this can be done in a batch for all the products
+                - new db query CoreProductService.createProduct
+                - new db query CoreProductService.createBarcode
+                - new db query CoreProductService.createProductCountryData
+                - new db query core.update(productOptions)
+            - createProductBy
+                - new db query db.product.findOne
+                - new db query db.product.create
+                - new db query createProductsData, sel_ins_productsData (again)
+                - new db query createAmazonProduct, sel_ins_amazonProducts (again)
+            - new db query sel_ins_coreRetailers
+            - new db query retailerTaxonomy.findOne
+            - new db query sel_ins_coreRetailerTaxonomies
+
+            - new db query PromotionService.processProductPromotions]
+            - new db query PromotionService.calculateMultibuyPrice
+            - new db query promo.find
+            - calculateAggregated
+                - new db query db.product.findOne
+                - new db query db.coreProductCountryData.findOne
+                - new db query ins_aggregatedProducts
+            - setCoreRetailerDate
+                - new db query db.coreRetailerDate.findOrCreate
+                
+            
+            
+        

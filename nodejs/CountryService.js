@@ -1,4 +1,17 @@
 export default class CountryService {
+    static defaultISO = { iso: 'GB', iso3: 'GBR' };
+  
+    static async getCountryByName(name) {
+      return db.country.scope('withoutDates').findOne({ name });
+    }
+  
+    static async getCountryByISO({ iso, iso3 }) {
+      const where = {};
+      if (iso) where.iso = iso;
+      else if (iso3) where.iso3 = iso3;
+      return db.country.scope('withoutDates').findOne({ where });
+    }
+  
     /**
      * Get country by id
      * @param id
