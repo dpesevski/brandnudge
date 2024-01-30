@@ -69,4 +69,42 @@ FROM "retailerTaxonomies"
 GROUP BY "companyId";
 
 SELECT *
+FROM "coreRetailers";
+
+SELECT "companyId", COUNT(*)
 FROM "coreRetailers"
+
+         INNER JOIN "coreRetailerTaxonomies" ON ("coreRetailerTaxonomies"."coreRetailerId" = "coreRetailers".id)
+         INNER JOIN "retailerTaxonomies" USING ("retailerId")
+         INNER JOIN "productsData" USING ("productId")
+         INNER JOIN "companyTaxonomies" ON ("retailerTaxonomies".id = "companyTaxonomies"."retailerTaxonomyId")
+GROUP BY "companyId";
+
+
+SELECT "coreRetailers"."coreProductId",
+       "retailerTaxonomies".id
+FROM "coreRetailers"
+         INNER JOIN "coreRetailerTaxonomies" ON ("coreRetailerTaxonomies"."coreRetailerId" = "coreRetailers".id)
+         INNER JOIN "retailerTaxonomies" USING ("retailerId")
+         INNER JOIN "companyTaxonomies" ON ("retailerTaxonomies".id = "companyTaxonomies"."retailerTaxonomyId")
+WHERE "companyTaxonomies"."companyId" = p_company_id;
+
+
+SELECT "retailerId"
+FROM "companyRetailers";
+
+SELECT "coreProductId"
+FROM "coreProductCountryData"
+--WHERE "ownLabelManufacturerId" = ANY (p_ownLabelManufacturerIds)  AND "countryId" = p_countryId;
+
+CREATE TABLE tests."coreProductRetailerTaxonomies" AS
+SELECT "coreProductId",
+       "retailerTaxonomies".id AS "retailerTaxonomyId",
+       COUNT(*)                AS products_data_occurences
+FROM "coreRetailers"
+         INNER JOIN (SELECT "productId"::text,
+                            "taxonomyId"
+                     FROM "productsData") AS "productsData" USING ("productId")
+         INNER JOIN "retailerTaxonomies" USING ("retailerId")
+GROUP BY 1, 2;
+
