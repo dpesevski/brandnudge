@@ -99,6 +99,14 @@ FROM "coreProductCountryData"
 
 CREATE TABLE tests."coreProductRetailerTaxonomies" AS
 SELECT "coreProductId",
+       "taxonomyId",
+       COUNT(*) AS products_data_occurences
+FROM products
+         INNER JOIN "productsData" ON (products.id = "productsData"."productId")
+GROUP BY "coreProductId", "taxonomyId";
+
+
+SELECT "coreProductId",
        "retailerTaxonomies".id AS "retailerTaxonomyId",
        COUNT(*)                AS products_data_occurences
 FROM "coreRetailers"
