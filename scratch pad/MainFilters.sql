@@ -1,3 +1,27 @@
+CREATE TABLE tests."coreProductRetailer_agg" AS
+WITH product_dates AS (SELECT "coreProductId",
+                              "retailerId",
+                              date::date,
+                              ROW_NUMBER()
+                              OVER ( PARTITION BY "coreProductId","retailerId" ORDER BY date ) AS row_num
+                       FROM "coreRetailers"
+                                INNER JOIN "coreRetailerDates" ON ("coreRetailerId" = "coreRetailers".id)
+                                INNER JOIN dates ON ("dateId" = dates.id))
+SELECT "coreProductId",
+       "retailerId",
+       ARRAY_AGG(DATERANGE(start_date,
+                           end_date, '[]') ORDER BY end_date) AS listing_intervals
+FROM (SELECT "coreProductId",
+             "retailerId",
+             MIN(date) start_date,
+             MAX(date) end_date
+      FROM product_dates
+      GROUP BY "coreProductId", "retailerId", DATE - row_num * INTERVAL '1 day') AS date_ranges
+GROUP BY "coreProductId",
+         "retailerId";
+
+
+
 WITH params("p_companyId", "p_countryId", "p_userId") AS (VALUES (74, 1, NULL::integer)),
      product_base AS (SELECT "coreProducts"."id",
                              "coreProducts"."title",
@@ -10,7 +34,9 @@ WITH params("p_companyId", "p_countryId", "p_userId") AS (VALUES (74, 1, NULL::i
                              "coreProductCountryData"."ownLabelManufacturerId",
                              COALESCE("productGroups"."productGroupIds", ARRAY []::int[]) AS "productGroupIds",
                              "brands"."color",
-                             "coreRetailers".retailers
+                             "coreRetailers".retailers,
+                             "coreRetailers".listing_periods
+
                       FROM (SELECT *
                             FROM "coreProducts"
                             WHERE NOT disabled) AS "coreProducts"
@@ -22,8 +48,10 @@ WITH params("p_companyId", "p_countryId", "p_userId") AS (VALUES (74, 1, NULL::i
                                           ON ("coreProducts".id = "coreProductCountryData"."coreProductId")
 
                                INNER JOIN "brands" ON ("coreProducts"."brandId" = "brands".id)
-                               INNER JOIN (SELECT "coreProductId", ARRAY_AGG("retailerId") AS "retailers"
-                                           FROM "coreRetailerProductLastDate"
+                               INNER JOIN (SELECT "coreProductId",
+                                                  ARRAY_AGG(ret_listing_intervals)                  AS "listing_periods",
+                                                  ARRAY_AGG("coreProductRetailer_agg"."retailerId") AS "retailers"
+                                           FROM tests."coreProductRetailer_agg"
                                                     INNER JOIN "companyRetailers" USING ("retailerId")
                                                     INNER JOIN companies ON ("companyRetailers"."companyId" = companies.id)
 
@@ -34,6 +62,7 @@ WITH params("p_companyId", "p_countryId", "p_userId") AS (VALUES (74, 1, NULL::i
                                                                    companies.id AND
                                                                    "companyCoreCategories"."categoryId" =
                                                                    "coreProducts"."categoryId")
+                                                    CROSS JOIN LATERAL (SELECT "retailerId", listing_intervals) AS ret_listing_intervals
                                                     CROSS JOIN params
                                            WHERE companies.id = params."p_companyId"
                                            GROUP BY "coreProductId") AS "coreRetailers"
@@ -128,9 +157,10 @@ WITH params("p_companyId", "p_countryId", "p_userId") AS (VALUES (74, 1, NULL::i
                          NULL AS label, -- in the sample data this has same value as the attribute "name"
                          NULL AS title  -- ?
                   FROM retailers
-                           INNER JOIN (SELECT DISTINCT retailer_id AS id
+                           INNER JOIN (SELECT DISTINCT retailer AS id
                                        FROM product_base
-                                                CROSS JOIN UNNEST(retailers) AS retailer_id) AS prod USING (id)),
+                                                CROSS JOIN UNNEST(product_base.retailers) AS "retailer") AS prod
+                                      USING (id)),
      "sourceType_agg" AS (SELECT ARRAY_AGG(retailer) AS data
                           FROM retailer)
 SELECT JSON_BUILD_OBJECT('sourceType', "sourceType_agg".data,
