@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS tests."coreProductRetailer_agg";
 CREATE TABLE tests."coreProductRetailer_agg" AS
 WITH product_dates AS (SELECT "coreProductId",
                               "retailerId",
