@@ -11,8 +11,7 @@ $$;
 
 SELECT staging.load_retailer_data('{
   "retailer": "sainsburys",
-
-
+  "products": [
     {
       "ean": "5000168208749",
       "date": "2024-01-04T00:05:00.015Z",
@@ -95,4 +94,3 @@ SELECT staging.load_retailer_data('{
     }
   ]
 }');
-
