@@ -1,12 +1,20 @@
 CREATE SCHEMA staging;
 CREATE SCHEMA tests;
 
-CREATE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
+CREATE TABLE IF NOT EXISTS staging.retailer_daily_data
+(
+    fetched_data jsonb,
+    created_at   timestamptz DEFAULT NOW()
+);
+
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
 BEGIN
-        RETURN;
+    INSERT INTO staging.retailer_daily_data (fetched_data)
+    VALUES (value);
+    RETURN;
 END;
 $$;
 
