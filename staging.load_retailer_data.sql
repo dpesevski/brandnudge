@@ -137,7 +137,7 @@ BEGIN
     /*  create the new categories   */
     WITH product_categ AS (SELECT DISTINCT category              AS name,
                                            dd_sourceCategoryType AS type
-                           FROM staging.tmp_product)
+                           FROM staging.tmp_daily_data)
     INSERT
     INTO "sourceCategories"(name, type, "createdAt", "updatedAt")
     SELECT name, type, NOW(), NOW()
@@ -152,7 +152,7 @@ BEGIN
                         FROM "sourceCategories"
                         WHERE type = dd_sourceCategoryType),
          prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands)
-    SELECT NULL                                             AS id,
+    SELECT NULL::integer                                    AS id,
            COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
            COALESCE(promotions[0].description, '')          AS "promotionDescription",
            "originalPrice"                                  AS "basePrice",
@@ -210,6 +210,7 @@ BEGIN
            sell,
            "fulfilParty",
            "amazonFulfilParty",
+           status,
            ROW_NUMBER() OVER (PARTITION BY ean)             AS rownum
     /*
     TO DO
@@ -231,6 +232,12 @@ BEGIN
              LEFT OUTER JOIN LATERAL (SELECT (REGEXP_MATCHES(ean,
                                                              '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$', -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
                                                              'g')) AS re_matches) AS checkEAN ON (TRUE);
+
+    UPDATE staging.tmp_product
+    SET status='re-listed'
+    WHERE status = 'newly'
+      AND NOT EXISTS (SELECT * FROM products WHERE "sourceId" = tmp_product."sourceId");
+
 
     /*  create the new coreProduct   */
     /*
@@ -359,8 +366,235 @@ BEGIN
     ON CONFLICT ("coreProductId", "countryId") DO NOTHING;
 
     /*  createProductBy    */
+    WITH ins_products AS (
+        INSERT INTO products ("sourceType",
+                              ean,
+                              promotions,
+                              "promotionDescription",
+                              features,
+                              date,
+                              "sourceId",
+                              "productBrand",
+                              "productTitle",
+                              "productImage",
+                              "secondaryImages",
+                              "productDescription",
+                              "productInfo",
+                              "promotedPrice",
+                              "productInStock",
+                              "reviewsCount",
+                              "reviewsStars",
+                              "eposId",
+                              multibuy,
+                              "coreProductId",
+                              "retailerId",
+                              "createdAt",
+                              "updatedAt",
+                              size,
+                              "pricePerWeight",
+                              href,
+                              nutritional,
+                              "basePrice",
+                              "shelfPrice",
+                              "productTitleDetail",
+                              "sizeUnit",
+                              "dateId")
+            SELECT "sourceType",
+                   ean,
+                   promotions,
+                   "promotionDescription",
+                   features,
+                   date,
+                   "sourceId",
+                   "productBrand",
+                   "productTitle",
+                   new_img."productImage",
+                   "secondaryImages",
+                   "productDescription",
+                   "productInfo",
+                   "promotedPrice",
+                   "productInStock",
+                   --  "productInListing",
+                   "reviewsCount",
+                   "reviewsStars",
+                   "eposId",
+                   multibuy,
+                   "coreProductId",
+                   "retailerId",
+                   NOW() AS "createdAt",
+                   NOW() AS "updatedAt",
+                   -- "imageId",
+                   size,
+                   "pricePerWeight",
+                   href,
+                   nutritional,
+                   "basePrice",
+                   "shelfPrice",
+                   "productTitleDetail",
+                   "sizeUnit",
+                   "dateId"
+            FROM (SELECT *
+                  FROM staging.tmp_product
+                  WHERE rownum = 1) AS tmp_product
+                     INNER JOIN (SELECT ean,
+                                        id AS "coreProductId"
+                                 FROM staging.tmp_coreproducts) AS core_product USING (ean)
+                     CROSS JOIN LATERAL (SELECT CASE
+                                                    WHEN "sourceType" = 'sainsburys' THEN
+                                                        REPLACE(
+                                                                REPLACE(
+                                                                        'https://www.sainsburys.co.uk' ||
+                                                                        "productImage",
+                                                                        'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
+                                                                        'https://www.sainsburys.co.uk'),
+                                                                'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
+                                                                'https://assets.sainsburys-groceries.co.uk')
+                                                    WHEN "sourceType" = 'ocado' THEN REPLACE(
+                                                            'https://www.ocado.com' || "productImage",
+                                                            'https://www.ocado.comhttps://ocado.com',
+                                                            'https://www.ocado.com')
+                                                    WHEN "sourceType" = 'morrisons' THEN
+                                                        'https://groceries.morrisons.com' || "productImage"
+                                                    END AS "productImage"
+
+                ) AS new_img
+            ON CONFLICT ("sourceId", "retailerId", "dateId")
+                WHERE "createdAt" >= '2024-02-29'
+                DO UPDATE
+                    SET "updatedAt" = NOW()
+            RETURNING products.*)
+    UPDATE staging.tmp_product
+    SET id=ins_products.id
+    FROM ins_products
+    WHERE tmp_product."sourceId" = ins_products."sourceId"
+      AND tmp_product."retailerId" = ins_products."retailerId"
+      AND tmp_product."dateId" = ins_products."dateId";
+
+    /*  createProductsData  */
+    /*
+    TO DO:
+        1. parentCategory
+        2. set UQ constrain in productsData on productId, category to keep only one ranking record for product/category per day.
+            Current solution and also the provided data in the daily_retail_load contains multiple ranking records for a product/category per day.
+    */
+    INSERT INTO "productsData" ("productId",
+                                category,
+                                "categoryType",
+                                "parentCategory",
+                                "productRank",
+                                "pageNumber",
+                                screenshot,
+                                "sourceCategoryId",
+                                featured,
+                                "featuredRank",
+                                "taxonomyId")
+    SELECT id   AS "productId",
+           category,
+           "categoryType",
+           NULL AS "parentCategory", -- TO DO
+           "productRank",
+           "pageNumber",
+           screenshot,
+           "sourceCategoryId",
+           featured,
+           "featuredRank",
+           "taxonomyId"
+    FROM staging.tmp_product;
+
+    /*  createAmazonProduct */
+    /*
+       TO DO: set UQ constrain in amazonProducts on productId?.
+     */
+    INSERT INTO "amazonProducts" ("productId",
+                                  shop,
+                                  choice,
+                                  "lowStock",
+                                  "sellParty",
+                                  sell,
+                                  "fulfilParty",
+                                  "createdAt",
+                                  "updatedAt")
+    SELECT id                                                                         AS "productId",
+           COALESCE(COALESCE(product."amazonShop", product.shop), '')                 AS shop,
+           COALESCE(COALESCE(product."amazonChoice", product.choice), '')             AS choice,
+           COALESCE(product."lowStock", FALSE)                                        AS "lowStock",
+           COALESCE(COALESCE(product."amazonSellParty", product."sellParty"), '')     AS "sellParty",
+           COALESCE(COALESCE(product."amazonSell", product."sell"), '')               AS "sell",
+           COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
+           NOW(),
+           NOW()
+    FROM staging.tmp_product AS product
+    WHERE rownum = 1
+      AND LOWER("sourceType") LIKE '%amazon%';
 
 
+    /*  setCoreRetailer */
+    DROP TABLE IF EXISTS staging.tmp_coreRetailer;
+    CREATE TABLE staging.tmp_coreRetailer AS
+    WITH ins_coreRetailers AS (
+        INSERT INTO "coreRetailers" ("coreProductId",
+                                     "retailerId",
+                                     "productId",
+                                     "createdAt",
+                                     "updatedAt")
+            SELECT core_product."coreProductId",
+                   dd_retailer.id,
+                   product.id AS "productId",
+                   NOW()      AS "createdAt",
+                   NOW()      AS "updatedAt"
+            FROM (SELECT * FROM staging.tmp_product WHERE rownum = 1) AS product
+                     INNER JOIN (SELECT ean,
+                                        id AS "coreProductId"
+                                 FROM staging.tmp_coreproducts) AS core_product USING (ean)
+            ON CONFLICT ("coreProductId",
+                "retailerId",
+                "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
+            RETURNING "coreRetailers".*)
+    SELECT id,
+           "coreProductId",
+           "retailerId",
+           "productId"::integer,
+           "createdAt",
+           "updatedAt"
+    FROM ins_coreRetailers;
+
+    /*  setCoreRetailerTaxonomy */
+    /*  nodejs code interpreted as insert in coreRetailerTaxonomies only if the given taxonomyId already exists in retailerTaxonomies */
+    INSERT INTO "coreRetailerTaxonomies" ("coreRetailerId",
+                                          "retailerTaxonomyId",
+                                          "createdAt",
+                                          "updatedAt")
+    SELECT tmp_coreRetailer.id AS "coreRetailerId",
+           "taxonomyId"        AS "retailerTaxonomyId",
+           NOW(),
+           NOW()
+    FROM staging.tmp_coreRetailer
+             INNER JOIN (SELECT id AS "productId", "taxonomyId" FROM staging.tmp_product WHERE rownum = 1) AS product
+                        USING ("productId")
+             INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
+    ON CONFLICT ("coreRetailerId",
+        "retailerTaxonomyId")
+    WHERE "createdAt" >= '2024-02-29'
+        DO
+    UPDATE
+    SET "updatedAt" = NOW();
+
+    /*  saveProductStatus   */
+    INSERT INTO "productStatuses" ("productId",
+                                   status,
+                                   screenshot,
+                                   "createdAt",
+                                   "updatedAt")
+    SELECT id AS "productId",
+           status,
+           screenshot,
+           NOW(),
+           NOW()
+    FROM staging.tmp_product
+    WHERE rownum = 1
+    ON CONFLICT ("productId")
+        DO UPDATE
+        SET "updatedAt" = NOW();
     --RAISE NOTICE 'dd_sourceCategoryType : %', dd_sourceCategoryType;
 
     RETURN;
@@ -415,184 +649,83 @@ ALTER TABLE products
 ADD CONSTRAINT products_pk
     UNIQUE ("sourceId", "retailerId", "dateId");
 
+
+ALTER TABLE "amazonProducts"
+    ADD CONSTRAINT "amazonProducts_productId_uq"
+        UNIQUE ("productId");
+
+ALTER TABLE "coreRetailerTaxonomies"
+ADD CONSTRAINT coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
+    UNIQUE ("coreRetailerId", "retailerTaxonomyId");
+
+DELETE
+FROM products
+WHERE "createdAt" >= '2024-02-29';
+
 */
+
 
 SELECT MAX(id)
 FROM dates;
-/*  temporary solution for fix_dup_products_deleted_rec */
+/*  temporary solution for fix_dup_products  */
 CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
     ON products ("sourceId", "retailerId", "dateId")
+    WHERE "createdAt" >= '2024-02-29';
+-- WHERE  "dateId">18166;
+
+/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
+CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
+    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
     WHERE "createdAt" >= '2024-02-29';-- WHERE  "dateId">18166;
 
+
+DELETE
+FROM "productsData" USING products
+WHERE "productId" = products.id
+  AND products."createdAt" >= '2024-02-29';
 
 SELECT staging.load_retailer_data(fetched_data)
 FROM staging.retailer_daily_data;
 
+
+/*  There are product entries in the daily load having more then one record for the category, "categoryType"
+    This is for the same href/pageNumber where only featured, featuredRank and ProductRank vary.
+
+    Example:    "sourceId" = '7878751'
+    SELECT "sourceId",
+       "categoryType",
+       category,
+       "pageNumber",
+       featured,
+       "featuredRank",
+       "productRank"
+    FROM staging.tmp_daily_data
+    WHERE "sourceId" = '7878751';
+
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+    |sourceId|categoryType|category                 |pageNumber|featured|isFeatured|featuredRank|productRank|
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+    |7878751 |aisle       |Flavoured & vitamin water|1         |false   |false     |9           |6          |
+    |7878751 |aisle       |Flavoured & vitamin water|1         |true    |true      |1           |1          |
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+
+
+    WITH dup AS (SELECT "sourceId",
+                        "categoryType",
+                        category,
+                        COUNT(*)
+                 FROM staging.tmp_daily_data
+                 GROUP BY 1, 2, 3
+                 HAVING COUNT(*) > 1)
+    SELECT *
+    FROM staging.tmp_daily_data
+             INNER JOIN dup USING ("sourceId", "categoryType", category);
+*/
+
 SELECT *
-FROM staging.tmp_coreProducts;
+FROM "amazonProducts"
+WHERE "createdAt" >= '2024-02-29';
 
+SELECT *
+FROM "coreRetailers";
 
-WITH ins_products AS (
-    INSERT INTO products ("sourceType",
-                          ean,
-                          promotions,
-                          "promotionDescription",
-                          features,
-                          date,
-                          "sourceId",
-                          "productBrand",
-                          "productTitle",
-                          "productImage",
-                          "secondaryImages",
-                          "productDescription",
-                          "productInfo",
-                          "promotedPrice",
-                          "productInStock",
-                          "reviewsCount",
-                          "reviewsStars",
-                          "eposId",
-                          multibuy,
-                          "coreProductId",
-                          "retailerId",
-                          "createdAt",
-                          "updatedAt",
-                          size,
-                          "pricePerWeight",
-                          href,
-                          nutritional,
-                          "basePrice",
-                          "shelfPrice",
-                          "productTitleDetail",
-                          "sizeUnit",
-                          "dateId")
-        SELECT "sourceType",
-               ean,
-               promotions,
-               "promotionDescription",
-               features,
-               date,
-               "sourceId",
-               "productBrand",
-               "productTitle",
-               new_img."productImage",
-               "secondaryImages",
-               "productDescription",
-               "productInfo",
-               "promotedPrice",
-               "productInStock",
-               --  "productInListing",
-               "reviewsCount",
-               "reviewsStars",
-               "eposId",
-               multibuy,
-               "coreProductId",
-               "retailerId",
-               NOW() AS "createdAt",
-               NOW() AS "updatedAt",
-               -- "imageId",
-               size,
-               "pricePerWeight",
-               href,
-               nutritional,
-               "basePrice",
-               "shelfPrice",
-               "productTitleDetail",
-               "sizeUnit",
-               "dateId"
-        FROM staging.tmp_product
-                 INNER JOIN (SELECT ean,
-                                    id AS "coreProductId"
-                             FROM staging.tmp_coreproducts) AS core_product USING (ean)
-                 CROSS JOIN LATERAL (SELECT CASE
-                                                WHEN "sourceType" = 'sainsburys' THEN
-                                                    REPLACE(
-                                                            REPLACE(
-                                                                    'https://www.sainsburys.co.uk' || "productImage",
-                                                                    'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
-                                                                    'https://www.sainsburys.co.uk'),
-                                                            'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
-                                                            'https://assets.sainsburys-groceries.co.uk')
-                                                WHEN "sourceType" = 'ocado' THEN REPLACE(
-                                                        'https://www.ocado.com' || "productImage",
-                                                        'https://www.ocado.comhttps://ocado.com',
-                                                        'https://www.ocado.com')
-                                                WHEN "sourceType" = 'morrisons' THEN
-                                                    'https://groceries.morrisons.com' || "productImage"
-                                                END AS "productImage"
-
-            ) AS new_img
-        ON CONFLICT ("sourceId", "retailerId", "dateId")
-            WHERE "createdAt" >= '2024-02-29'
-            DO UPDATE
-                SET "updatedAt" = NOW()
-        RETURNING products.*)
-UPDATE staging.tmp_product
-SET id=ins_products.id
-FROM ins_products
-WHERE tmp_product."sourceId" = ins_products."sourceId"
-  AND tmp_product."retailerId" = ins_products."retailerId"
-  AND tmp_product."dateId" = ins_products."dateId";
-
-
-WITH prod AS (SELECT "sourceType",
-                     ean,
-                     promotions,
-                     "promotionDescription",
-                     features,
-                     date,
-                     "sourceId",
-                     "productBrand",
-                     "productTitle",
-                     new_img."productImage",
-                     "secondaryImages",
-                     "productDescription",
-                     "productInfo",
-                     "promotedPrice",
-                     "productInStock",
-                     --  "productInListing",
-                     "reviewsCount",
-                     "reviewsStars",
-                     "eposId",
-                     multibuy,
-                     "coreProductId",
-                     "retailerId",
-                     NOW() AS "createdAt",
-                     NOW() AS "updatedAt",
-                     -- "imageId",
-                     size,
-                     "pricePerWeight",
-                     href,
-                     nutritional,
-                     "basePrice",
-                     "shelfPrice",
-                     "productTitleDetail",
-                     "sizeUnit",
-                     "dateId"
-              FROM staging.tmp_product
-                       INNER JOIN (SELECT ean,
-                                          id AS "coreProductId"
-                                   FROM staging.tmp_coreproducts) AS core_product USING (ean)
-                       CROSS JOIN LATERAL (SELECT CASE
-                                                      WHEN "sourceType" = 'sainsburys' THEN
-                                                          REPLACE(
-                                                                  REPLACE(
-                                                                          'https://www.sainsburys.co.uk' ||
-                                                                          "productImage",
-                                                                          'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
-                                                                          'https://www.sainsburys.co.uk'),
-                                                                  'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
-                                                                  'https://assets.sainsburys-groceries.co.uk')
-                                                      WHEN "sourceType" = 'ocado' THEN REPLACE(
-                                                              'https://www.ocado.com' || "productImage",
-                                                              'https://www.ocado.comhttps://ocado.com',
-                                                              'https://www.ocado.com')
-                                                      WHEN "sourceType" = 'morrisons' THEN
-                                                          'https://groceries.morrisons.com' || "productImage"
-                                                      END AS "productImage"
-
-                  ) AS new_img)
-SELECT "sourceId",-- "retailerId", "dateId",
-       COUNT(*)
-FROM staging.tmp_daily_data
-GROUP BY 1--, 2, 3
-HAVING COUNT(*) > 1
