@@ -86,6 +86,75 @@ SELECT staging.load_retailer_data('{
 }');
  */
 
+/*
+drop type staging.t_promotion cascade;
+create type staging.t_promotion as
+(
+    "promoId"   text,
+    "retailerPromotionId" integer,
+    "startDate" timestamp,
+    "endDate"   timestamp,
+    description text,
+    mechanic    text
+);
+drop table if exists staging.retailer_data;
+create table if not exists staging.retailer_data
+(
+    retailer               retailers,
+    ean                    text,
+    date                   date,
+    href                   text,
+    size                   text,
+    "eposId"               text,
+    status                 text,
+    bundled                boolean,
+    category               text,
+    featured               boolean,
+    features               text,
+    promotions             staging.t_promotion[],
+    multibuy               boolean,
+    "sizeUnit"             text,
+    "sourceId"             text,
+    "inTaxonomy"           boolean,
+    "isFeatured"           boolean,
+    "pageNumber"           text,
+    screenshot             text,
+    "sourceType"           text,
+    "taxonomyId"           integer,
+    nutritional            text,
+    "productInfo"          text,
+    "productRank"          integer,
+    "categoryType"         text,
+    "featuredRank"         integer,
+    "productBrand"         text,
+    "productImage"         text,
+    "productPrice"         double precision,
+    "productTitle"         text,
+    "reviewsCount"         integer,
+    "reviewsStars"         double precision,
+    "originalPrice"        double precision,
+    "pricePerWeight"       text,
+    "productInStock"       boolean,
+    "secondaryImages"      boolean,
+    "productDescription"   text,
+    "productTitleDetail"   text,
+    "promotionDescription" text,
+    "productOptions"       boolean default false,
+    shop                   text,
+    "amazonShop"           text    default 'Core'::text,
+    choice                 text,
+    "amazonChoice"         text,
+    "lowStock"             boolean,
+    "sellParty"            text,
+    "amazonSellParty"      text,
+    sell                   text,
+    "fulfilParty"          text,
+    "amazonFulfilParty"    text,
+    "amazonSell"           text
+);
+
+*/
+
 --DROP FUNCTION IF EXISTS staging.load_retailer_data(jsonb);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
     LANGUAGE plpgsql
@@ -152,15 +221,15 @@ BEGIN
                         FROM "sourceCategories"
                         WHERE type = dd_sourceCategoryType),
          prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands)
-    SELECT NULL::integer                                    AS id,
-           COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
-           COALESCE(promotions[0].description, '')          AS "promotionDescription",
-           "originalPrice"                                  AS "basePrice",
-           "originalPrice"                                  AS "shelfPrice",
-           "originalPrice"                                  AS "promotedPrice",
-           dd_retailer.id                                   AS "retailerId",
-           dd_date_id                                       AS "dateId",
-           NOT (NOT featured)                               AS featured,
+    SELECT NULL::integer                        AS id,
+           NULL::integer                        AS "coreProductId",
+           promotions,
+           "originalPrice"                      AS "basePrice",
+           "originalPrice"                      AS "shelfPrice",
+           "originalPrice"                      AS "promotedPrice",
+           dd_retailer.id                       AS "retailerId",
+           dd_date_id                           AS "dateId",
+           NOT (NOT featured)                   AS featured,
            "bundled",
            "category",
            "categoryType",
@@ -198,7 +267,7 @@ BEGIN
            "sourceCategoryId",
            "brandId",
            "productOptions",
-           checkEAN.re_matches IS NULL                      AS "eanIssues",
+           checkEAN."eanIssues",
            shop,
            "amazonShop",
            choice,
@@ -211,7 +280,7 @@ BEGIN
            "fulfilParty",
            "amazonFulfilParty",
            status,
-           ROW_NUMBER() OVER (PARTITION BY ean)             AS rownum
+           ROW_NUMBER() OVER (PARTITION BY ean) AS rownum
     /*
     TO DO
         if (
@@ -229,9 +298,10 @@ BEGIN
              INNER JOIN prod_categ USING (category)
              LEFT OUTER JOIN prod_brand USING ("productBrand")
         /*  CompareUtil.checkEAN    */
-             LEFT OUTER JOIN LATERAL (SELECT (REGEXP_MATCHES(ean,
-                                                             '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$', -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
-                                                             'g')) AS re_matches) AS checkEAN ON (TRUE);
+        -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
+             CROSS JOIN LATERAL ( SELECT ean !~ '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$' AS "eanIssues"
+        ) AS checkEAN;
+
 
     UPDATE staging.tmp_product
     SET status='re-listed'
@@ -318,11 +388,16 @@ BEGIN
                             "productOptions"
                      FROM coreProductData
                      ON CONFLICT (ean) DO UPDATE
-                         SET disabled = FALSE,
-                             "productOptions" = excluded."productOptions"
+                         SET disabled = FALSE, "productOptions" = excluded."productOptions"
                      RETURNING *)
     SELECT *
     FROM ins_coreProducts;
+
+    UPDATE staging.tmp_product
+    SET "coreProductId"=tmp_coreproducts.id
+    FROM staging.tmp_coreproducts
+    WHERE tmp_product.ean = tmp_coreproducts.ean
+      AND rownum = 1;
 
     INSERT
     INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt")
@@ -365,6 +440,8 @@ BEGIN
     FROM staging.tmp_coreProducts
     ON CONFLICT ("coreProductId", "countryId") DO NOTHING;
 
+    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
+
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
@@ -401,8 +478,8 @@ BEGIN
                               "dateId")
             SELECT "sourceType",
                    ean,
-                   promotions,
-                   "promotionDescription",
+                   COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
+                   COALESCE(promotions[0].description, '')          AS "promotionDescription",
                    features,
                    date,
                    "sourceId",
@@ -421,8 +498,8 @@ BEGIN
                    multibuy,
                    "coreProductId",
                    "retailerId",
-                   NOW() AS "createdAt",
-                   NOW() AS "updatedAt",
+                   NOW()                                            AS "createdAt",
+                   NOW()                                            AS "updatedAt",
                    -- "imageId",
                    size,
                    "pricePerWeight",
@@ -436,9 +513,6 @@ BEGIN
             FROM (SELECT *
                   FROM staging.tmp_product
                   WHERE rownum = 1) AS tmp_product
-                     INNER JOIN (SELECT ean,
-                                        id AS "coreProductId"
-                                 FROM staging.tmp_coreproducts) AS core_product USING (ean)
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
                                                         REPLACE(
@@ -537,15 +611,12 @@ BEGIN
                                      "productId",
                                      "createdAt",
                                      "updatedAt")
-            SELECT core_product."coreProductId",
+            SELECT product."coreProductId",
                    dd_retailer.id,
                    product.id AS "productId",
                    NOW()      AS "createdAt",
                    NOW()      AS "updatedAt"
             FROM (SELECT * FROM staging.tmp_product WHERE rownum = 1) AS product
-                     INNER JOIN (SELECT ean,
-                                        id AS "coreProductId"
-                                 FROM staging.tmp_coreproducts) AS core_product USING (ean)
             ON CONFLICT ("coreProductId",
                 "retailerId",
                 "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
@@ -595,6 +666,9 @@ BEGIN
     ON CONFLICT ("productId")
         DO UPDATE
         SET "updatedAt" = NOW();
+
+    /*  PromotionService.processProductPromotions, calculateMultibuyPrice   should be run before products creation to determine the prices  */
+
     --RAISE NOTICE 'dd_sourceCategoryType : %', dd_sourceCategoryType;
 
     RETURN;
@@ -678,6 +752,10 @@ CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
     ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
     WHERE "createdAt" >= '2024-02-29';-- WHERE  "dateId">18166;
 
+
+CREATE UNIQUE INDEX promotions_uq_key
+    ON promotions ("productId")
+    WHERE "createdAt" >= '2024-02-29';
 
 DELETE
 FROM "productsData" USING products
