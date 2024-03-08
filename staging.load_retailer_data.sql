@@ -220,54 +220,141 @@ BEGIN
     WITH prod_categ AS (SELECT id AS "sourceCategoryId", name AS category
                         FROM "sourceCategories"
                         WHERE type = dd_sourceCategoryType),
-         prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands)
-    SELECT NULL::integer                        AS id,
-           NULL::integer                        AS "coreProductId",
+         prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
+         daily_data AS (SELECT NULL::integer                        AS id,
+                               NULL::integer                        AS "coreProductId",
+                               NULL::integer                        AS "parentCategory", -- TO DO
+
+                               promotions,
+                               "originalPrice"                      AS "basePrice",
+                               "originalPrice"                      AS "shelfPrice",
+                               "originalPrice"                      AS "promotedPrice",
+                               dd_retailer.id                       AS "retailerId",
+                               dd_date_id                           AS "dateId",
+                               NOT (NOT featured)                   AS featured,
+                               "bundled",
+                               "category",
+                               "categoryType",
+                               "date",
+                               "ean",
+                               "eposId",
+                               "featuredRank",
+                               "features",
+                               "href",
+                               "inTaxonomy",
+                               "isFeatured",
+                               "multibuy",
+                               "nutritional",
+                               "pageNumber",
+                               "pricePerWeight",
+                               "productBrand",
+                               "productDescription",
+                               "productImage",
+                               "productInStock",
+                               "productInfo",
+                               "productRank",
+                               "productTitle",
+                               "productTitleDetail",
+                               "reviewsCount",
+                               "reviewsStars",
+                               "screenshot",
+                               "secondaryImages",
+                               "size",
+                               "sizeUnit",
+                               "sourceId",
+                               "sourceType",
+                               COALESCE("taxonomyId", 0)            AS "taxonomyId",
+                               "sourceCategoryId",
+                               "brandId",
+                               "productOptions",
+                               checkEAN."eanIssues",
+                               shop,
+                               "amazonShop",
+                               choice,
+                               "amazonChoice",
+                               "lowStock",
+                               "sellParty",
+                               "amazonSellParty",
+                               "amazonSell",
+                               sell,
+                               "fulfilParty",
+                               "amazonFulfilParty",
+                               status,
+                               ROW_NUMBER() OVER (PARTITION BY ean) AS rownum
+/*
+TO DO
+    if (
+      product.sourceType === 'waitrose' &&
+      !CompareUtil.checkEAN(product.ean)
+    ) {
+      const waitroseEAN = await ProductService.fetchWaitroseProductEAN(
+        product.sourceId,
+      );
+      if (waitroseEAN) product.ean = waitroseEAN;
+    }
+
+*/
+                        FROM staging.tmp_daily_data
+                                 INNER JOIN prod_categ USING (category)
+                                 LEFT OUTER JOIN prod_brand USING ("productBrand")
+                            /*  CompareUtil.checkEAN    */
+                            -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
+                                 CROSS JOIN LATERAL ( SELECT ean !~ '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$' AS "eanIssues"
+                            ) AS checkEAN),
+         ranking AS (SELECT "sourceId",
+                            ARRAY_AGG(
+                                    (NULL,
+                                     NULL,
+                                     category,
+                                     "categoryType",
+                                     "parentCategory",
+                                     "productRank",
+                                     "pageNumber",
+                                     screenshot,
+                                     "sourceCategoryId",
+                                     featured,
+                                     "featuredRank",
+                                     "taxonomyId")::"productsData"
+                            ) AS ranking_data
+                     FROM daily_data
+                     GROUP BY "sourceId")
+    SELECT id,
+           "coreProductId",
            promotions,
-           "originalPrice"                      AS "basePrice",
-           "originalPrice"                      AS "shelfPrice",
-           "originalPrice"                      AS "promotedPrice",
-           dd_retailer.id                       AS "retailerId",
-           dd_date_id                           AS "dateId",
-           NOT (NOT featured)                   AS featured,
+           "basePrice",
+           "shelfPrice",
+           "promotedPrice",
+           "retailerId",
+           "dateId",
+           featured,
            "bundled",
-           "category",
-           "categoryType",
            "date",
            "ean",
            "eposId",
-           --"featured",
-           "featuredRank",
            "features",
            "href",
            "inTaxonomy",
            "isFeatured",
            "multibuy",
            "nutritional",
-           "pageNumber",
            "pricePerWeight",
            "productBrand",
            "productDescription",
            "productImage",
            "productInStock",
            "productInfo",
-           "productRank",
            "productTitle",
            "productTitleDetail",
-           --"promotions",
            "reviewsCount",
            "reviewsStars",
-           "screenshot",
            "secondaryImages",
            "size",
            "sizeUnit",
            "sourceId",
            "sourceType",
-           "taxonomyId",
-           "sourceCategoryId",
            "brandId",
            "productOptions",
-           checkEAN."eanIssues",
+           "eanIssues",
            shop,
            "amazonShop",
            choice,
@@ -280,34 +367,110 @@ BEGIN
            "fulfilParty",
            "amazonFulfilParty",
            status,
-           ROW_NUMBER() OVER (PARTITION BY ean) AS rownum
-    /*
-    TO DO
-        if (
-          product.sourceType === 'waitrose' &&
-          !CompareUtil.checkEAN(product.ean)
-        ) {
-          const waitroseEAN = await ProductService.fetchWaitroseProductEAN(
-            product.sourceId,
-          );
-          if (waitroseEAN) product.ean = waitroseEAN;
-        }
-
-    */
-    FROM staging.tmp_daily_data
-             INNER JOIN prod_categ USING (category)
-             LEFT OUTER JOIN prod_brand USING ("productBrand")
-        /*  CompareUtil.checkEAN    */
-        -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
-             CROSS JOIN LATERAL ( SELECT ean !~ '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$' AS "eanIssues"
-        ) AS checkEAN;
-
+           screenshot,
+           ranking.ranking_data
+    FROM daily_data
+             INNER JOIN ranking USING ("sourceId")
+    WHERE rownum = 1;
 
     UPDATE staging.tmp_product
     SET status='re-listed'
     WHERE status = 'newly'
       AND NOT EXISTS (SELECT * FROM products WHERE "sourceId" = tmp_product."sourceId");
 
+    /*  prepare products' promotions data   */
+    WITH ret_promo AS (SELECT id AS "retailerPromotionId",
+                              "retailerId",
+                              "promotionMechanicId",
+                              regexp,
+                              "promotionMechanicName"
+                       FROM "retailerPromotions"
+                                INNER JOIN (SELECT id   AS "promotionMechanicId",
+                                                   name AS "promotionMechanicName"
+                                            FROM "promotionMechanics") AS "promotionMechanics"
+                                           USING ("promotionMechanicId")),
+         product_promo AS (SELECT product."retailerId",
+                                  "sourceId",
+                                  promo_indx,
+                                  lat_dates."startDate",
+                                  lat_dates."endDate",
+
+                                  lat_promo_id."promoId",
+                                  promo.description,
+                                  promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
+
+
+                                  COALESCE(ret_promo."retailerPromotionId",
+                                           default_ret_promo."retailerPromotionId")       AS "retailerPromotionId",
+                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp)    AS regexp,
+                                  COALESCE(ret_promo."promotionMechanicId",
+                                           default_ret_promo."promotionMechanicId")       AS "promotionMechanicId",
+                                  COALESCE(
+                                          ret_promo."promotionMechanicName",
+                                          default_ret_promo."promotionMechanicName")      AS "promotionMechanicName",
+                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx) AS rownum
+                           FROM staging.tmp_product AS product
+                                    CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
+                                                                                                   "retailerPromotionId",
+                                                                                                   "startDate",
+                                                                                                   "endDate",
+                                                                                                   description,
+                                                                                                   mechanic,
+                                                                                                   promo_indx)
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."startDate", product.date) AS "startDate",
+                                                               COALESCE(promo."endDate", product.date)   AS "endDate") AS lat_dates
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."promoId",
+                                                                        REPLACE("retailerId" || '_' || "sourceId" ||
+                                                                                '_' ||
+                                                                                description || '_' ||
+                                                                                lat_dates."startDate", ' ',
+                                                                                '_')) AS "promoId") AS lat_promo_id
+                                    CROSS JOIN LATERAL (
+                               SELECT LOWER(multi_replace(promo.description,
+                                                          'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
+                                                          '5',
+                                                          'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
+                                                          '10',
+                                                          ',', '')) AS desc
+                               ) AS promo_desc_trsf
+                                    LEFT OUTER JOIN ret_promo AS default_ret_promo
+                                                    ON (product."retailerId" = default_ret_promo."retailerId" AND
+                                                        default_ret_promo."promotionMechanicId" = 3)
+                                    LEFT OUTER JOIN ret_promo
+                                                    ON (product."retailerId" = ret_promo."retailerId" AND
+                                                        CASE
+                                                            WHEN ret_promo."promotionMechanicId" IS NULL THEN FALSE
+                                                            WHEN LOWER(ret_promo."promotionMechanicName") =
+                                                                 COALESCE(promo.mechanic, '') THEN TRUE
+                                                            WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
+                                                                THEN FALSE
+                                                            WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
+                                                                 promo_desc_trsf.desc ~ '(\d+\/\d+)'
+                                                                THEN FALSE
+                                                            ELSE
+                                                                promo_desc_trsf.desc ~ ret_promo.regexp
+                                                            END
+                                                        )),
+         upd_product_promo AS (SELECT "sourceId",
+                                      ARRAY_AGG(("promoId",
+                                                 "retailerPromotionId",
+                                                 "startDate",
+                                                 "endDate",
+                                                 description,
+                                                 "promotionMechanicName")::staging.t_promotion
+                                                ORDER BY promo_indx) AS promotions
+                               FROM product_promo
+                               WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+                               GROUP BY 1)
+    UPDATE staging.tmp_product
+    SET promotions=upd_product_promo.promotions
+    FROM staging.tmp_product AS all_products
+             LEFT OUTER JOIN upd_product_promo
+                             ON all_products."sourceId" = upd_product_promo."sourceId"
+    WHERE tmp_product."sourceId" = all_products."sourceId";
+
+
+    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
 
     /*  create the new coreProduct   */
     /*
@@ -329,8 +492,6 @@ BEGIN
         logic on selecting coreProductId relating to coreProductBarcode, coreRetailer....
     */
     /*  createCoreBy    */
-    DROP TABLE IF EXISTS staging.tmp_coreProducts;
-    CREATE TABLE staging.tmp_coreProducts AS
     WITH coreProductData AS (SELECT ean,
                                     "productTitle"                    AS title,
                                     "productImage"                    AS image,
@@ -343,9 +504,8 @@ BEGIN
                                     size,
                                     nutritional                       AS specification,
                                     COALESCE("productOptions", FALSE) AS "productOptions",
-                                    "eanIssues" --!CompareUtil.checkEAN(product.ean)
-                             FROM staging.tmp_product
-                             WHERE rownum = 1),
+                                    "eanIssues"
+                             FROM staging.tmp_product),
          ins_coreProducts AS (
              INSERT
                  INTO "coreProducts" (ean,
@@ -388,59 +548,61 @@ BEGIN
                             "productOptions"
                      FROM coreProductData
                      ON CONFLICT (ean) DO UPDATE
-                         SET disabled = FALSE, "productOptions" = excluded."productOptions"
-                     RETURNING *)
-    SELECT *
-    FROM ins_coreProducts;
-
+                         SET disabled = FALSE,
+                             "productOptions" = excluded."productOptions",
+                             "updatedAt" = excluded."updatedAt"
+                     RETURNING *),
+        /*  createProductCountryData    */
+         ins_prod_country_data AS (INSERT INTO "coreProductCountryData" ("coreProductId",
+                                                                         "countryId",
+                                                                         title,
+                                                                         image,
+                                                                         description,
+                                                                         features,
+                                                                         ingredients,
+                                                                         specification,
+                                                                         "createdAt",
+                                                                         "updatedAt",
+                                                                         "secondaryImages",
+                                                                         bundled,
+                                                                         disabled,
+                                                                         reviewed)
+             SELECT id AS "coreProductId",
+                    dd_retailer."countryId",
+                    title,
+                    image,
+                    description,
+                    features,
+                    ingredients,
+                    specification,
+                    NOW(),
+                    NOW(),
+                    "secondaryImages",
+                    bundled,
+                    disabled,
+                    reviewed
+             --"ownLabelManufacturerId",
+             --"brandbankManaged"
+             FROM ins_coreProducts
+             --WHERE "updatedAt" != "createdAt"
+             WHERE "updatedAt" >= NOW()::date
+             ON CONFLICT ("coreProductId", "countryId")
+                 DO UPDATE
+                     SET "updatedAt" = excluded."updatedAt"),
+         ins_coreProductBarcodes AS (
+             INSERT
+                 INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt")
+                     SELECT id, ean, NOW(), NOW()
+                     FROM ins_coreProducts
+                     WHERE "updatedAt" >= NOW()::date
+                     ON CONFLICT (barcode)
+                         DO UPDATE
+                             SET "updatedAt" = excluded."updatedAt")
     UPDATE staging.tmp_product
-    SET "coreProductId"=tmp_coreproducts.id
-    FROM staging.tmp_coreproducts
-    WHERE tmp_product.ean = tmp_coreproducts.ean
-      AND rownum = 1;
+    SET "coreProductId"=ins_coreProducts.id
+    FROM ins_coreProducts
+    WHERE tmp_product.ean = ins_coreProducts.ean;
 
-    INSERT
-    INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt")
-    SELECT id, ean, NOW(), NOW()
-    FROM staging.tmp_coreProducts
-    ON CONFLICT (barcode) DO NOTHING;
-
-
-    /*  createProductCountryData    */
-    INSERT INTO "coreProductCountryData" ("coreProductId",
-                                          "countryId",
-                                          title,
-                                          image,
-                                          description,
-                                          features,
-                                          ingredients,
-                                          specification,
-                                          "createdAt",
-                                          "updatedAt",
-                                          "secondaryImages",
-                                          bundled,
-                                          disabled,
-                                          reviewed)
-    SELECT id AS "coreProductId",
-           dd_retailer."countryId",
-           title,
-           image,
-           description,
-           features,
-           ingredients,
-           specification,
-           NOW(),
-           NOW(),
-           "secondaryImages",
-           bundled,
-           disabled,
-           reviewed
-    --"ownLabelManufacturerId",
---"brandbankManaged"
-    FROM staging.tmp_coreProducts
-    ON CONFLICT ("coreProductId", "countryId") DO NOTHING;
-
-    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
 
     /*  createProductBy    */
     WITH ins_products AS (
@@ -510,9 +672,7 @@ BEGIN
                    "productTitleDetail",
                    "sizeUnit",
                    "dateId"
-            FROM (SELECT *
-                  FROM staging.tmp_product
-                  WHERE rownum = 1) AS tmp_product
+            FROM staging.tmp_product
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
                                                         REPLACE(
@@ -562,18 +722,19 @@ BEGIN
                                 featured,
                                 "featuredRank",
                                 "taxonomyId")
-    SELECT id   AS "productId",
-           category,
-           "categoryType",
-           NULL AS "parentCategory", -- TO DO
-           "productRank",
-           "pageNumber",
-           screenshot,
-           "sourceCategoryId",
-           featured,
-           "featuredRank",
-           "taxonomyId"
-    FROM staging.tmp_product;
+    SELECT product.id AS "productId",
+           ranking.category,
+           ranking."categoryType",
+           ranking."parentCategory",
+           ranking."productRank",
+           ranking."pageNumber",
+           ranking.screenshot,
+           ranking."sourceCategoryId",
+           ranking.featured,
+           ranking."featuredRank",
+           ranking."taxonomyId"
+    FROM staging.tmp_product AS product
+             CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking;
 
     /*  createAmazonProduct */
     /*
@@ -598,8 +759,7 @@ BEGIN
            NOW(),
            NOW()
     FROM staging.tmp_product AS product
-    WHERE rownum = 1
-      AND LOWER("sourceType") LIKE '%amazon%';
+    WHERE LOWER("sourceType") LIKE '%amazon%';
 
 
     /*  setCoreRetailer */
@@ -616,7 +776,7 @@ BEGIN
                    product.id AS "productId",
                    NOW()      AS "createdAt",
                    NOW()      AS "updatedAt"
-            FROM (SELECT * FROM staging.tmp_product WHERE rownum = 1) AS product
+            FROM staging.tmp_product AS product
             ON CONFLICT ("coreProductId",
                 "retailerId",
                 "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
@@ -640,7 +800,10 @@ BEGIN
            NOW(),
            NOW()
     FROM staging.tmp_coreRetailer
-             INNER JOIN (SELECT id AS "productId", "taxonomyId" FROM staging.tmp_product WHERE rownum = 1) AS product
+             INNER JOIN (SELECT DISTINCT tmp_product.id AS "productId",
+                                         ranking."taxonomyId"
+                         FROM staging.tmp_product
+                                  CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking) AS product
                         USING ("productId")
              INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
     ON CONFLICT ("coreRetailerId",
@@ -662,7 +825,6 @@ BEGIN
            NOW(),
            NOW()
     FROM staging.tmp_product
-    WHERE rownum = 1
     ON CONFLICT ("productId")
         DO UPDATE
         SET "updatedAt" = NOW();
