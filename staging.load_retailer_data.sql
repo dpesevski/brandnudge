@@ -125,6 +125,10 @@ CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
     ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
     WHERE "createdAt" >= '2024-02-29';
 
+CREATE UNIQUE INDEX aggregatedProducts_uq_key
+    ON "aggregatedProducts" ("productId")
+    WHERE "createdAt" >= '2024-02-29';
+
 /*  There are product entries in the daily load having more then one record for the category, "categoryType"
     This is for the same href/pageNumber where only featured, featuredRank and ProductRank vary.
 
@@ -268,6 +272,39 @@ CREATE TABLE IF NOT EXISTS staging.retailer_data
     "amazonSell"           text
 );
 
+DROP FUNCTION IF EXISTS staging.compareTwoStrings(text, text);
+CREATE OR REPLACE FUNCTION staging.compareTwoStrings(title1 text, title2 text) RETURNS float
+    LANGUAGE plv8
+AS
+$$
+ const first = title1.replace(/\s+/g, '');
+    const second = title2.replace(/\s+/g, '');
+
+    if (!first.length && !second.length) return 1;
+    if (!first.length || !second.length) return 0;
+    if (first === second) return 1;
+    if (first.length === 1 && second.length === 1) return 0;
+    if (first.length < 2 || second.length < 2) return 0;
+
+    const firstBigrams = new Map();
+    for (let i = 0; i < first.length - 1; i += 1) {
+      const bigram = first.substr(i, 2);
+      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) + 1 : 1;
+
+      firstBigrams.set(bigram, count);
+    }
+    let intersectionSize = 0;
+    for (let i = 0; i < second.length - 1; i += 1) {
+      const bigram = second.substr(i, 2);
+      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) : 0;
+
+      if (count > 0) {
+        firstBigrams.set(bigram, count - 1);
+        intersectionSize += 1;
+      }
+    }
+    return (2.0 * intersectionSize) / (first.length + second.length - 2);
+$$;
 
 DROP FUNCTION IF EXISTS staging.calculateMultibuyPrice(text, float);
 CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS float
@@ -1099,6 +1136,34 @@ TO DO
         "endDate"=GREATEST(promotions."endDate", excluded."endDate"),
         "updatedAt" = excluded."updatedAt";
 
+    /*  aggregatedProducts  */
+    INSERT INTO "aggregatedProducts" ("titleMatch",
+                                      "productId",
+                                      "createdAt",
+                                      "updatedAt"
+        /*
+        TO DO:
+        Handle the rest of the "match" scores:
+            features,
+            specification,
+            size,
+            description,
+            ingredients,
+            "imageMatch"
+         */
+    )
+    SELECT staging.compareTwoStrings("titleParent", "productTitle") AS "titleMatch",
+           id                                                       AS "productId",
+           NOW()                                                    AS "createdAt",
+           NOW()                                                       "updatedAt"
+    FROM staging.tmp_product
+             INNER JOIN (SELECT "coreProductId", title AS "titleParent"
+                         FROM "coreProductCountryData"
+                         WHERE "countryId" = 1) AS parentProdCountryData USING ("coreProductId")
+    ON CONFLICT ("productId")
+    WHERE "createdAt" >= '2024-02-29'
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     /*  coreRetailerDates */
     INSERT INTO "coreRetailerDates" ("coreRetailerId",
@@ -1114,6 +1179,7 @@ TO DO
         "dateId")
         DO NOTHING;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
+
 
     /*  coreProductSourceCategory   */
     INSERT INTO "coreProductSourceCategories" ("coreProductId",
