@@ -42,7 +42,7 @@
 */
 
 DROP FUNCTION IF EXISTS staging.calculateMultibuyPrice(text, float);
-CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS text
+CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS float
     LANGUAGE plv8
 AS
 $$
@@ -215,13 +215,16 @@ WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                                                         END
                                                     )),
      upd_product_promo AS (SELECT "sourceId",
+                                  MAX(description) FILTER (WHERE "promotionMechanicName" = 'Multibuy') AS Multibuy_description,
+                                  MAX(description)
+                                  FILTER (WHERE LOWER("promotionMechanicName") ~ 'clubcard price')      AS tescoClubcardPromo_description,
                                   ARRAY_AGG(("promoId",
                                              "retailerPromotionId",
                                              "startDate",
                                              "endDate",
                                              description,
                                              "promotionMechanicName")::staging.t_promotion
-                                            ORDER BY promo_indx) AS promotions
+                                            ORDER BY promo_indx)                                        AS promotions
 /*
        "dateId",
        "coreProductId",
@@ -235,7 +238,25 @@ WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                            WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
                            GROUP BY 1)
 UPDATE staging.tmp_product
-SET promotions=upd_product_promo.promotions
+SET promotions=upd_product_promo.promotions,
+    "promotedPrice" = CASE
+                          WHEN upd_product_promo.Multibuy_description IS NOT NULL
+                              THEN staging.calculateMultibuyPrice(upd_product_promo.Multibuy_description,
+                                                                  all_products."promotedPrice")
+                          WHEN upd_product_promo."sourceId" IS NOT NULL THEN all_products."productPrice"
+                          ELSE
+                              all_products."promotedPrice"
+        END,
+    "shelfPrice"= CASE
+                      WHEN upd_product_promo.Multibuy_description IS NOT NULL
+                          THEN all_products."shelfPrice"
+                      WHEN NOT (all_products.sourceType = 'tesco' AND
+                                upd_product_promo.tescoClubcardPromo_description IS NOT NULL)
+                          THEN
+                          all_products."productPrice"
+                      ELSE
+                          all_products."shelfPrice"
+        END
 FROM staging.tmp_product AS all_products
          LEFT OUTER JOIN upd_product_promo
                          ON all_products."sourceId" = upd_product_promo."sourceId"

@@ -86,19 +86,134 @@ SELECT staging.load_retailer_data('{
 }');
  */
 
+
+/*  remove coreProductCountryData duplicate records and add UQ constraint on "coreProductId", "countryId" */
+CREATE TABLE staging.fix_dup_coreProductCountryData_deleted_rec AS
+WITH coreProductCountryData_ext AS (SELECT *,
+                                           ROW_NUMBER()
+                                           OVER (PARTITION BY "coreProductId", "countryId" ORDER BY "createdAt" ASC ) AS rownum
+                                    FROM "coreProductCountryData"),
+     deleted AS (
+         DELETE
+             FROM "coreProductCountryData"
+                 USING coreProductCountryData_ext
+                 WHERE "coreProductCountryData".id = coreProductCountryData_ext.id AND rownum > 1
+                 RETURNING "coreProductCountryData".*)
+SELECT *
+FROM deleted;
+
+ALTER TABLE "coreProductCountryData"
+    ADD CONSTRAINT coreProductCountryData_pk
+        UNIQUE ("coreProductId", "countryId");
+
+/*  temporary solution for fix_dup_products  */
+CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
+    ON products ("sourceId", "retailerId", "dateId")
+    WHERE "createdAt" >= '2024-02-29';
+-- WHERE  "dateId">18166;
+
+/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
+CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
+    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
+    WHERE "createdAt" >= '2024-02-29';-- WHERE  "dateId">18166;
+
+CREATE UNIQUE INDEX promotions_uq_key
+    ON promotions ("productId")
+    WHERE "createdAt" >= '2024-02-29';
+
+CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
+    ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
+    WHERE "createdAt" >= '2024-02-29';
+
+/*  There are product entries in the daily load having more then one record for the category, "categoryType"
+    This is for the same href/pageNumber where only featured, featuredRank and ProductRank vary.
+
+    Example:    "sourceId" = '7878751'
+    SELECT "sourceId",
+       "categoryType",
+       category,
+       "pageNumber",
+       featured,
+       "featuredRank",
+       "productRank"
+    FROM staging.tmp_daily_data
+    WHERE "sourceId" = '7878751';
+
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+    |sourceId|categoryType|category                 |pageNumber|featured|isFeatured|featuredRank|productRank|
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+    |7878751 |aisle       |Flavoured & vitamin water|1         |false   |false     |9           |6          |
+    |7878751 |aisle       |Flavoured & vitamin water|1         |true    |true      |1           |1          |
+    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
+
+    WITH dup AS (SELECT "sourceId",
+                        "categoryType",
+                        category,
+                        COUNT(*)
+                 FROM staging.tmp_daily_data
+                 GROUP BY 1, 2, 3
+                 HAVING COUNT(*) > 1)
+    SELECT *
+    FROM staging.tmp_daily_data
+             INNER JOIN dup USING ("sourceId", "categoryType", category);
+*/
+
+
 /*
-drop type staging.t_promotion cascade;
-create type staging.t_promotion as
+     I - promotionMechanic defaults
+
+        if (!promo) {
+         [mechanic] = await db.promotionMechanic.findOrCreate({
+          where: { name: defaultMechanic },
+          defaults: { name: defaultMechanic },
+        });
+
+      ...
+
+        const obj = {
+          retailerId: retailerId,
+          promotionMechanicId: mechanic.id,
+        };
+        [promo] = await db.retailerPromotion.findOrCreate({
+          where: obj,
+          defaults: obj,
+        });
+
+     findRetailerPromotion function (possibly) creates records in two tables:
+     - promotionMechanic with a defaultMechanic, and
+     - retailerPromotion with retailerId and promotionMechanicId
+
+     promotionMechanics contains 3 records including current defaultMechanic ("Other").
+
+     retailerPromotion records manage "regexp", and these are recorded outside the daily load job.
+     The only record which may be inserted in the retailerPromotion at the daily load job would have defaultMechanic (Other) for the promotionMechanicId.
+
+     In case new defaultMechanic is set, the same should be added in the promotionMechanics.
+     Also, in table retailerPromotion a record should be added for each retailerId with the promotionMechanic = defaultMechanic.
+     This is better approach then to have to check the existence of the default records and then handle it in the code at the every day within the daily load job.
+
+     II - comparePromotionWithPreviousProduct
+
+     The "comparePromotionWithPreviousProduct" function checks for prevProduct using product's dateId. Every call to load_retailer_data creates a new dateId, so prevProduct can only be another record from the products list in this call.
+     The products list contains also data for the ranking, effectively duplicating the part for the public.product record for each of the ranking.
+     The staging.tmp_product has field "rownum" where only 1st value (rownum=-1) is considered for updating the public.products table.
+     Similarly, only promotions from this record will be used to update public.promotions.
+     This leads to calling comparePromotionWithPreviousProduct only once, so there won't be any prevProduct to compare to, so effectively it can be avoided.
+
+*/
+
+DROP TYPE staging.t_promotion CASCADE;
+CREATE TYPE staging.t_promotion AS
 (
-    "promoId"   text,
+    "promoId"             text,
     "retailerPromotionId" integer,
-    "startDate" timestamp,
-    "endDate"   timestamp,
-    description text,
-    mechanic    text
+    "startDate"           timestamp,
+    "endDate"             timestamp,
+    description           text,
+    mechanic              text
 );
-drop table if exists staging.retailer_data;
-create table if not exists staging.retailer_data
+DROP TABLE IF EXISTS staging.retailer_data;
+CREATE TABLE IF NOT EXISTS staging.retailer_data
 (
     retailer               retailers,
     ean                    text,
@@ -139,9 +254,9 @@ create table if not exists staging.retailer_data
     "productDescription"   text,
     "productTitleDetail"   text,
     "promotionDescription" text,
-    "productOptions"       boolean default false,
+    "productOptions"       boolean DEFAULT FALSE,
     shop                   text,
-    "amazonShop"           text    default 'Core'::text,
+    "amazonShop"           text    DEFAULT 'Core'::text,
     choice                 text,
     "amazonChoice"         text,
     "lowStock"             boolean,
@@ -153,7 +268,110 @@ create table if not exists staging.retailer_data
     "amazonSell"           text
 );
 
-*/
+
+DROP FUNCTION IF EXISTS staging.calculateMultibuyPrice(text, float);
+CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS float
+    LANGUAGE plv8
+AS
+$$
+function textToNumber(str) {
+  const numMap = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+  };
+
+  return Object.keys(numMap).reduce(
+    (res, text) => res.replace(new RegExp(text, 'gi'), numMap[text]),
+    str,
+  );
+}
+
+function numPrice(price) {
+  if (!price) return 1;
+  if (!isNaN(price)) return price;
+  if (price.includes('£')) return parseFloat(price.split('£')[1]).toFixed(2);
+  else if (price.includes('p'))
+    return parseFloat(price.split('p')[0] / 100).toFixed(2);
+  return price;
+}
+ if (!description || !price) return price;
+    let result = price;
+    const desc = textToNumber(description.replace(',', '').toLowerCase());
+
+    const isFloat = n => Number(n) === n && n % 1 !== 0;
+
+    const countAndPrice = desc.match(/£?(\d+(.\d{1,2})?|\d+\/\d+)p?/g);
+    if (!countAndPrice || !countAndPrice.length) return price;
+
+    const [count, discountPrice = '£1'] = countAndPrice;
+    const dp = numPrice(discountPrice);
+    let sum = price * count;
+
+    // "3 for 2" match
+    const forMatch = desc.match(/(\d+) for (\d+)/i);
+
+    if (forMatch) {
+      // eslint-disable-next-line no-unused-vars
+      const [match, totalCount, forCount] = forMatch;
+      sum = price * forCount;
+      result = sum / totalCount;
+    } else if (desc.includes('save')) {
+      const isPercent = desc.includes('%');
+      const halfPrice = desc.includes('half price');
+      // eslint-disable-next-line no-nested-ternary
+      const discount = isPercent ? (sum / 100) * dp : halfPrice ? sum / 2 : dp;
+      result = (sum - discount) / count;
+    } else if (desc.includes('price of')) {
+      result = (price * dp) / count;
+    } else if (desc.includes('free')) {
+      const freeCount = dp > count ? 1 : +dp;
+      result = sum / (+count + freeCount);
+    } else if (desc.includes('half price')) {
+      sum += (price / 2) * dp;
+      result = sum / (+count + +dp);
+    } else {
+      result = Math.round((dp * 100.0) / count) / 100;
+    }
+
+    result = isFloat(result) ? result.toFixed(2) : result;
+
+    return result.toString();
+$$;
+
+CREATE OR REPLACE FUNCTION multi_replace(value text, VARIADIC arr text[]) RETURNS text
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    e         text;
+    find_text text;
+BEGIN
+    BEGIN
+        FOREACH e IN ARRAY arr
+            LOOP
+                IF find_text IS NULL THEN
+                    find_text := e;
+                ELSE
+                    value := REPLACE(value, find_text, e);
+                    find_text := NULL;
+                END IF;
+            END LOOP;
+
+        RETURN value;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
 
 --DROP FUNCTION IF EXISTS staging.load_retailer_data(jsonb);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
@@ -185,6 +403,8 @@ BEGIN
 
     /*  ProductService.getCreateProductCommonData  */
     /*  dates.findOrCreate  */
+    /*  TO DO:  add UQ constraint on date   */
+
     SELECT id
     INTO dd_date_id
     FROM dates
@@ -226,6 +446,8 @@ BEGIN
                                NULL::integer                        AS "parentCategory", -- TO DO
 
                                promotions,
+                               "productPrice",
+                               "originalPrice",
                                "originalPrice"                      AS "basePrice",
                                "originalPrice"                      AS "shelfPrice",
                                "originalPrice"                      AS "promotedPrice",
@@ -321,6 +543,8 @@ TO DO
     SELECT id,
            "coreProductId",
            promotions,
+           "productPrice",
+           "originalPrice",
            "basePrice",
            "shelfPrice",
            "promotedPrice",
@@ -379,6 +603,7 @@ TO DO
       AND NOT EXISTS (SELECT * FROM products WHERE "sourceId" = tmp_product."sourceId");
 
     /*  prepare products' promotions data   */
+    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
                               "promotionMechanicId",
@@ -452,25 +677,44 @@ TO DO
                                                             END
                                                         )),
          upd_product_promo AS (SELECT "sourceId",
+                                      MAX(description) FILTER (WHERE "promotionMechanicName" = 'Multibuy') AS Multibuy_description,
+                                      MAX(description)
+                                      FILTER (WHERE LOWER("promotionMechanicName") ~ 'clubcard price')     AS tescoClubcardPromo_description,
                                       ARRAY_AGG(("promoId",
                                                  "retailerPromotionId",
                                                  "startDate",
                                                  "endDate",
                                                  description,
                                                  "promotionMechanicName")::staging.t_promotion
-                                                ORDER BY promo_indx) AS promotions
+                                                ORDER BY promo_indx)                                       AS promotions
                                FROM product_promo
                                WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
                                GROUP BY 1)
     UPDATE staging.tmp_product
-    SET promotions=upd_product_promo.promotions
+    SET promotions=upd_product_promo.promotions,
+        "promotedPrice" = CASE
+                              WHEN upd_product_promo.Multibuy_description IS NOT NULL
+                                  THEN staging.calculateMultibuyPrice(upd_product_promo.Multibuy_description,
+                                                                      all_products."promotedPrice")
+                              WHEN upd_product_promo."sourceId" IS NOT NULL THEN all_products."productPrice"
+                              ELSE
+                                  all_products."promotedPrice"
+            END,
+        "shelfPrice"= CASE
+                          WHEN upd_product_promo.Multibuy_description IS NOT NULL
+                              THEN all_products."shelfPrice"
+                          WHEN NOT (all_products."sourceType" = 'tesco' AND
+                                    upd_product_promo.tescoClubcardPromo_description IS NOT NULL)
+                              THEN
+                              all_products."productPrice"
+                          ELSE
+                              all_products."shelfPrice"
+            END
     FROM staging.tmp_product AS all_products
              LEFT OUTER JOIN upd_product_promo
                              ON all_products."sourceId" = upd_product_promo."sourceId"
     WHERE tmp_product."sourceId" = all_products."sourceId";
 
-
-    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
 
     /*  create the new coreProduct   */
     /*
@@ -695,7 +939,7 @@ TO DO
             ON CONFLICT ("sourceId", "retailerId", "dateId")
                 WHERE "createdAt" >= '2024-02-29'
                 DO UPDATE
-                    SET "updatedAt" = NOW()
+                    SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*)
     UPDATE staging.tmp_product
     SET id=ins_products.id
@@ -809,9 +1053,8 @@ TO DO
     ON CONFLICT ("coreRetailerId",
         "retailerTaxonomyId")
     WHERE "createdAt" >= '2024-02-29'
-        DO
-    UPDATE
-    SET "updatedAt" = NOW();
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     /*  saveProductStatus   */
     INSERT INTO "productStatuses" ("productId",
@@ -826,98 +1069,72 @@ TO DO
            NOW()
     FROM staging.tmp_product
     ON CONFLICT ("productId")
-        DO UPDATE
-        SET "updatedAt" = NOW();
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    /*  PromotionService.processProductPromotions, calculateMultibuyPrice   should be run before products creation to determine the prices  */
+    /*  PromotionService.processProductPromotions, part 2 insert promotions  */
+    INSERT INTO promotions ("retailerPromotionId",
+                            "productId",
+                            description,
+                            "startDate",
+                            "endDate",
+                            "createdAt",
+                            "updatedAt",
+                            "promoId")
+    SELECT "retailerPromotionId",
+           id    AS "productId",
+           description,
+           "startDate",
+           "endDate",
+           NOW() AS "createdAt",
+           NOW() AS "updatedAt",
+           "promoId"
+    FROM staging.tmp_product
+             CROSS JOIN LATERAL UNNEST(promotions) AS promo
+    ON CONFLICT ("productId")
+    WHERE "createdAt" >= '2024-02-29'
+        DO
+    UPDATE
+    SET "startDate"=LEAST(promotions."startDate", excluded."startDate"),
+        "endDate"=GREATEST(promotions."endDate", excluded."endDate"),
+        "updatedAt" = excluded."updatedAt";
 
-    --RAISE NOTICE 'dd_sourceCategoryType : %', dd_sourceCategoryType;
+
+    /*  coreRetailerDates */
+    INSERT INTO "coreRetailerDates" ("coreRetailerId",
+                                     "dateId",
+                                     "createdAt",
+                                     "updatedAt")
+    SELECT tmp_coreRetailer.id AS "coreRetailerId",
+           dd_date_id          AS "dateId",
+           NOW(),
+           NOW()
+    FROM staging.tmp_coreRetailer
+    ON CONFLICT ("coreRetailerId",
+        "dateId")
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
+
+    /*  coreProductSourceCategory   */
+    INSERT INTO "coreProductSourceCategories" ("coreProductId",
+                                               "sourceCategoryId",
+                                               "createdAt",
+                                               "updatedAt")
+    SELECT DISTINCT tmp_product."coreProductId",
+                    ranking."sourceCategoryId",
+                    NOW(),
+                    NOW()
+    FROM staging.tmp_product
+             CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
+    ON CONFLICT ("coreProductId", "sourceCategoryId")
+    WHERE "createdAt" >= '2024-02-29'
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     RETURN;
 END ;
 
 $$;
-/*
-ALTER TABLE staging.retailer_data
-    ADD "productOptions" boolean DEFAULT FALSE;
-
-CREATE INDEX products_sourceId_dateId_retailerId_index
-    ON products ("sourceId", "dateId", "retailerId");
-
- */
-
-/*  remove coreProductCountryData duplicate records and add UQ constraint on "coreProductId", "countryId" */
-CREATE TABLE staging.fix_dup_coreProductCountryData_deleted_rec AS
-WITH coreProductCountryData_ext AS (SELECT *,
-                                           ROW_NUMBER()
-                                           OVER (PARTITION BY "coreProductId", "countryId" ORDER BY "createdAt" ASC ) AS rownum
-                                    FROM "coreProductCountryData"),
-     deleted AS (
-         DELETE
-             FROM "coreProductCountryData"
-                 USING coreProductCountryData_ext
-                 WHERE "coreProductCountryData".id = coreProductCountryData_ext.id AND rownum > 1
-                 RETURNING "coreProductCountryData".*)
-SELECT *
-FROM deleted;
-
-ALTER TABLE "coreProductCountryData"
-    ADD CONSTRAINT coreProductCountryData_pk
-        UNIQUE ("coreProductId", "countryId");
-
-/*  remove products duplicate records and add UQ constraint on  "sourceId", "retailerId", "dateId"
-TO DO:
-CREATE TABLE staging.fix_dup_products_deleted_rec AS
-WITH products_ext AS (SELECT *,
-                             ROW_NUMBER()
-                             OVER (PARTITION BY "sourceId", "retailerId", "dateId" ORDER BY "createdAt" ASC ) AS rownum
-                      FROM products),
-     deleted AS (
-         DELETE
-             FROM products
-                 USING products_ext
-                 WHERE products.id = products_ext.id AND rownum > 1
-                 RETURNING products.*)
-SELECT *
-FROM deleted;
-
-ALTER TABLE products
-ADD CONSTRAINT products_pk
-    UNIQUE ("sourceId", "retailerId", "dateId");
-
-
-ALTER TABLE "amazonProducts"
-    ADD CONSTRAINT "amazonProducts_productId_uq"
-        UNIQUE ("productId");
-
-ALTER TABLE "coreRetailerTaxonomies"
-ADD CONSTRAINT coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
-    UNIQUE ("coreRetailerId", "retailerTaxonomyId");
-
-DELETE
-FROM products
-WHERE "createdAt" >= '2024-02-29';
-
-*/
-
-
-SELECT MAX(id)
-FROM dates;
-/*  temporary solution for fix_dup_products  */
-CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
-    ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-02-29';
--- WHERE  "dateId">18166;
-
-/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
-CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
-    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-02-29';-- WHERE  "dateId">18166;
-
-
-CREATE UNIQUE INDEX promotions_uq_key
-    ON promotions ("productId")
-    WHERE "createdAt" >= '2024-02-29';
 
 DELETE
 FROM "productsData" USING products
@@ -926,46 +1143,3 @@ WHERE "productId" = products.id
 
 SELECT staging.load_retailer_data(fetched_data)
 FROM staging.retailer_daily_data;
-
-
-/*  There are product entries in the daily load having more then one record for the category, "categoryType"
-    This is for the same href/pageNumber where only featured, featuredRank and ProductRank vary.
-
-    Example:    "sourceId" = '7878751'
-    SELECT "sourceId",
-       "categoryType",
-       category,
-       "pageNumber",
-       featured,
-       "featuredRank",
-       "productRank"
-    FROM staging.tmp_daily_data
-    WHERE "sourceId" = '7878751';
-
-    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
-    |sourceId|categoryType|category                 |pageNumber|featured|isFeatured|featuredRank|productRank|
-    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
-    |7878751 |aisle       |Flavoured & vitamin water|1         |false   |false     |9           |6          |
-    |7878751 |aisle       |Flavoured & vitamin water|1         |true    |true      |1           |1          |
-    +--------+------------+-------------------------+----------+--------+----------+------------+-----------+
-
-
-    WITH dup AS (SELECT "sourceId",
-                        "categoryType",
-                        category,
-                        COUNT(*)
-                 FROM staging.tmp_daily_data
-                 GROUP BY 1, 2, 3
-                 HAVING COUNT(*) > 1)
-    SELECT *
-    FROM staging.tmp_daily_data
-             INNER JOIN dup USING ("sourceId", "categoryType", category);
-*/
-
-SELECT *
-FROM "amazonProducts"
-WHERE "createdAt" >= '2024-02-29';
-
-SELECT *
-FROM "coreRetailers";
-
