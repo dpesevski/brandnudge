@@ -5,7 +5,7 @@ CREATE TABLE staging.retailer_daily_data
 );
 
 
-CREATE FUNCTION load_retailer_data(value json) RETURNS void
+CREATE FUNCTION staging.load_retailer_data(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$

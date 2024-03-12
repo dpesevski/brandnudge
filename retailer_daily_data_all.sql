@@ -1,8 +1,10 @@
 DROP TABLE IF EXISTS staging.retailer_daily_data_all;
 CREATE TABLE staging.retailer_daily_data_all AS
 SELECT JSON_AGG(fetched_data) AS fetched_data
-FROM staging.retailer_daily_data
-         CROSS JOIN LATERAL GENERATE_SERIES(1, 10) AS ret_id;
+FROM (SELECT *
+      FROM staging.retailer_daily_data
+      LIMIT 1) AS retailer_daily_data
+         CROSS JOIN LATERAL GENERATE_SERIES(1, 20) AS ret_id;
 
 
 DROP TABLE staging.tmp_coreretailer;
@@ -31,12 +33,14 @@ $$;
 SELECT staging.load_retailer_data_all(fetched_data)
 FROM staging.retailer_daily_data_all;
 
-SELECT fetched_data #>'{products,0,sourceId}'
+SELECT fetched_data #> '{products,0,sourceId}'
 FROM staging.retailer_daily_data;
 
 
 
-SELECT (retailer_data::jsonb)#>'{products,0,sourceId}'
+SELECT (retailer_data::jsonb) #> '{products,0,sourceId}'
 FROM staging.retailer_daily_data_all
          CROSS JOIN LATERAL JSON_ARRAY_ELEMENTS(fetched_data) AS retailer_data;
-select  count(*) from staging.tmp_product
+
+SELECT COUNT(*)
+FROM staging.tmp_product
