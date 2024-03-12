@@ -429,9 +429,8 @@ BEGIN
     DROP TABLE IF EXISTS staging.tmp_daily_data;
     CREATE TABLE staging.tmp_daily_data AS
     SELECT product.*
-    FROM staging.retailer_daily_data
-             CROSS JOIN LATERAL JSONB_POPULATE_RECORDSET(NULL::staging.retailer_data,
-                                                         fetched_data -> 'products') AS product;
+    FROM  JSONB_POPULATE_RECORDSET(NULL::staging.retailer_data,
+                                                         value -> 'products') AS product;
 
     SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END
     INTO dd_date, dd_source_type, dd_sourceCategoryType
@@ -1159,7 +1158,7 @@ TO DO
     FROM staging.tmp_product
              INNER JOIN (SELECT "coreProductId", title AS "titleParent"
                          FROM "coreProductCountryData"
-                         WHERE "countryId" = 1) AS parentProdCountryData USING ("coreProductId")
+                         WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData USING ("coreProductId")
     ON CONFLICT ("productId")
     WHERE "createdAt" >= '2024-02-29'
         DO NOTHING;
@@ -1209,3 +1208,4 @@ WHERE "productId" = products.id
 
 SELECT staging.load_retailer_data(fetched_data)
 FROM staging.retailer_daily_data;
+

@@ -3,11 +3,11 @@ CREATE SCHEMA tests;
 
 CREATE TABLE IF NOT EXISTS staging.retailer_daily_data
 (
-    fetched_data jsonb,
+    fetched_data json,
     created_at   timestamptz DEFAULT NOW()
 );
 
-CREATE OR REPLACE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
