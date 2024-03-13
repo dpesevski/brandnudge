@@ -411,7 +411,7 @@ END;
 $$;
 
 --DROP FUNCTION IF EXISTS staging.load_retailer_data(jsonb);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data(value jsonb) RETURNS void
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -429,7 +429,7 @@ BEGIN
     DROP TABLE IF EXISTS staging.tmp_daily_data;
     CREATE TABLE staging.tmp_daily_data AS
     SELECT product.*
-    FROM  JSONB_POPULATE_RECORDSET(NULL::staging.retailer_data,
+    FROM  JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
                                                          value -> 'products') AS product;
 
     SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END

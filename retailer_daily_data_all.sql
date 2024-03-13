@@ -23,7 +23,7 @@ BEGIN
     SELECT JSON_ARRAY_ELEMENTS(value);
      */
 
-    PERFORM staging.load_retailer_data(ratailer_data::jsonb)
+    PERFORM staging.load_retailer_data(ratailer_data)
     FROM JSON_ARRAY_ELEMENTS(value) AS ratailer_data;
 
     RETURN;
@@ -32,15 +32,6 @@ $$;
 
 SELECT staging.load_retailer_data_all(fetched_data)
 FROM staging.retailer_daily_data_all;
-
-SELECT fetched_data #> '{products,0,sourceId}'
-FROM staging.retailer_daily_data;
-
-
-
-SELECT (retailer_data::jsonb) #> '{products,0,sourceId}'
-FROM staging.retailer_daily_data_all
-         CROSS JOIN LATERAL JSON_ARRAY_ELEMENTS(fetched_data) AS retailer_data;
 
 SELECT COUNT(*)
 FROM staging.tmp_product

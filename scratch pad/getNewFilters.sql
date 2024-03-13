@@ -99,11 +99,22 @@ FROM "coreProductCountryData"
 
 CREATE TABLE tests."coreProductRetailerTaxonomies" AS
 SELECT "coreProductId",
-       "taxonomyId",
-       COUNT(*) AS products_data_occurences
+       "taxonomyId" AS "retailerTaxonomyId",
+       COUNT(*)     AS products_data_occurences
 FROM products
          INNER JOIN "productsData" ON (products.id = "productsData"."productId")
 GROUP BY "coreProductId", "taxonomyId";
+
+
+CREATE INDEX coreProductRetailerTaxonomies_retailerTaxonomyId_index
+    ON tests."coreProductRetailerTaxonomies" ("retailerTaxonomyId");
+
+
+SELECT "coreProductRetailerTaxonomies"."coreProductId",
+       "coreProductRetailerTaxonomies"."retailerTaxonomyId"
+FROM tests."coreProductRetailerTaxonomies"
+         INNER JOIN "companyTaxonomies" USING ("retailerTaxonomyId")
+WHERE "companyTaxonomies"."companyId" = p_company_id;
 
 
 SELECT "coreProductId",
