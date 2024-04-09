@@ -205,8 +205,8 @@ CREATE UNIQUE INDEX aggregatedProducts_uq_key
      This leads to calling comparePromotionWithPreviousProduct only once, so there won't be any prevProduct to compare to, so effectively it can be avoided.
 
 */
-
-DROP TYPE staging.t_promotion CASCADE;
+CREATE EXTENSION plv8;
+DROP TYPE IF EXISTS staging.t_promotion CASCADE;
 CREATE TYPE staging.t_promotion AS
 (
     "promoId"             text,
@@ -219,7 +219,7 @@ CREATE TYPE staging.t_promotion AS
 DROP TABLE IF EXISTS staging.retailer_data;
 CREATE TABLE IF NOT EXISTS staging.retailer_data
 (
-    retailer               retailers,
+    retailer               text,--retailers,
     ean                    text,
     date                   date,
     href                   text,
@@ -429,8 +429,8 @@ BEGIN
     DROP TABLE IF EXISTS staging.tmp_daily_data;
     CREATE TABLE staging.tmp_daily_data AS
     SELECT product.*
-    FROM  JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
-                                                         value -> 'products') AS product;
+    FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
+                                 value -> 'products') AS product;
 
     SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END
     INTO dd_date, dd_source_type, dd_sourceCategoryType
