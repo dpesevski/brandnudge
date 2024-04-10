@@ -1,9 +1,10 @@
-DROP TYPE IF EXISTS staging.t_promotion_pp;
+DROP TYPE IF EXISTS staging.t_promotion_pp CASCADE;
 CREATE TYPE staging.t_promotion_pp AS
 (
     promo_id          text,
     promo_type        text,
-    promo_description text
+    promo_description text,
+    multibuy_price    text
 );
 DROP TYPE IF EXISTS staging.retailer_data_pp;
 CREATE TYPE staging.retailer_data_pp AS
@@ -40,7 +41,7 @@ CREATE TYPE staging.retailer_data_pp AS
 SET WORK_MEM = ' 2097151';
 SHOW WORK_MEM;
 
-CREATE FUNCTION fn_to_float(value text) RETURNS double precision
+CREATE OR REPLACE FUNCTION fn_to_float(value text) RETURNS double precision
     LANGUAGE plpgsql
 AS
 $$
@@ -54,7 +55,7 @@ BEGIN
 END;
 $$;
 
-CREATE FUNCTION fn_to_date(value text) RETURNS date
+CREATE OR REPLACE FUNCTION fn_to_date(value text) RETURNS date
     LANGUAGE plpgsql
 AS
 $$
@@ -67,7 +68,7 @@ BEGIN
     END;
 END;
 $$;
-CREATE FUNCTION fn_to_boolean(value text) RETURNS boolean
+CREATE OR REPLACE FUNCTION fn_to_boolean(value text) RETURNS boolean
     LANGUAGE plpgsql
 AS
 $$
@@ -81,8 +82,8 @@ BEGIN
 END;
 $$;
 
-DROP TABLE IF EXISTS staging.tests_pp_file;
-CREATE TABLE staging.tests_pp_file AS
+DROP TABLE IF EXISTS staging.test_file;
+CREATE TABLE staging.test_file AS
 SELECT fetched_data ->> 'retailer'                       AS retailer,
        JSON_ARRAY_LENGTH(fetched_data -> 'products')     AS products_count,
        fetched_data #>> '{products,0,date}'              AS date,
@@ -102,7 +103,8 @@ SELECT retailer,
        flag,
        is_pp,
        created_at
-FROM staging.tests_pp_file;
+FROM staging.test_file
+ORDER BY created_at DESC;
 
 DROP TABLE IF EXISTS staging.tests_daily_data_pp;
 CREATE TABLE staging.tests_daily_data_pp AS
@@ -125,11 +127,26 @@ SELECT file_src,
        product."imageURL",
        fn_to_boolean(product."bundled")   AS "bundled",
        fn_to_boolean(product."masterSku") AS "masterSku"
-FROM staging.tests_pp_file
+FROM staging.test_file
          CROSS JOIN LATERAL JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
-                                                    fetched_data -> 'products') AS product;
---WHERE tests_pp_file.retailer = 'aldi'
+                                                    fetched_data -> 'products') AS product
+WHERE test_file.flag = 'create-products-pp';
+--WHERE test_file.retailer = 'aldi'
 
 SELECT COUNT(*)
 FROM staging.tests_daily_data_pp;
 
+SELECT fetched_data ->> 'retailer'                       AS retailer,
+       JSON_ARRAY_LENGTH(fetched_data -> 'products')     AS products_count,
+       fetched_data #>> '{products,0,date}'              AS date,
+       fetched_data ->> 'retailer' || '__' || created_at AS file_src,
+       PG_COLUMN_SIZE(fetched_data)                      AS size,
+       flag,
+       (fetched_data #> '{products,0}')::jsonb ? 'title' AS is_pp,
+       created_at
+FROM staging.retailer_daily_data
+ORDER BY file_src;
+
+SELECT *
+FROM staging.test_file
+WHERE retailer = 'superdrug';
