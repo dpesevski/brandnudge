@@ -94,6 +94,15 @@ SELECT fetched_data ->> 'retailer'                       AS retailer,
        created_at
 FROM staging.retailer_daily_data;
 
+SELECT retailer,
+       products_count,
+       date,
+       file_src,
+       size,
+       flag,
+       is_pp,
+       created_at
+FROM staging.tests_pp_file;
 
 DROP TABLE IF EXISTS staging.tests_daily_data_pp;
 CREATE TABLE staging.tests_daily_data_pp AS
@@ -123,14 +132,4 @@ FROM staging.tests_pp_file
 
 SELECT COUNT(*)
 FROM staging.tests_daily_data_pp;
-
-SELECT retailer,
-       products_count,
-       date,
-       file_src,
-       size,
-       flag,
-       is_pp,
-       created_at
-FROM staging.tests_pp_file;
 
