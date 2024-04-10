@@ -37,9 +37,8 @@ CREATE TYPE staging.retailer_data_pp AS
     "masterSku"   TEXT--boolean
 );
 
-SHOW WORK_MEM;
 SET WORK_MEM = ' 2097151';
-
+SHOW WORK_MEM;
 
 CREATE FUNCTION fn_to_float(value text) RETURNS double precision
     LANGUAGE plpgsql
@@ -82,12 +81,15 @@ BEGIN
 END;
 $$;
 
-DROP TABLE staging.tests_pp_file;
+DROP TABLE IF EXISTS staging.tests_pp_file;
 CREATE TABLE staging.tests_pp_file AS
 SELECT fetched_data ->> 'retailer'                       AS retailer,
        JSON_ARRAY_LENGTH(fetched_data -> 'products')     AS products_count,
        fetched_data #>> '{products,0,date}'              AS date,
        fetched_data ->> 'retailer' || '__' || created_at AS file_src,
+       PG_COLUMN_SIZE(fetched_data)                      AS size,
+       flag,
+       (fetched_data #> '{products,0}')::jsonb ? 'title' AS is_pp,
        fetched_data,
        created_at
 FROM staging.retailer_daily_data;
@@ -118,4 +120,17 @@ FROM staging.tests_pp_file
          CROSS JOIN LATERAL JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
                                                     fetched_data -> 'products') AS product;
 --WHERE tests_pp_file.retailer = 'aldi'
+
+SELECT COUNT(*)
+FROM staging.tests_daily_data_pp;
+
+SELECT retailer,
+       products_count,
+       date,
+       file_src,
+       size,
+       flag,
+       is_pp,
+       created_at
+FROM staging.tests_pp_file;
 
