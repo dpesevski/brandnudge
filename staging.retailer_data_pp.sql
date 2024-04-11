@@ -1,3 +1,72 @@
+DROP TYPE IF EXISTS staging.t_promotion CASCADE;
+CREATE TYPE staging.t_promotion AS
+(
+    "promoId"             text,
+    "retailerPromotionId" integer,
+    "startDate"           timestamp,
+    "endDate"             timestamp,
+    description           text,
+    mechanic              text
+);
+
+DROP TYPE IF EXISTS staging.retailer_data CASCADE;
+CREATE TYPE staging.retailer_data AS
+(
+    retailer               retailers,
+    ean                    text,
+    date                   date,
+    href                   text,
+    size                   text,
+    "eposId"               text,
+    status                 text,
+    bundled                boolean,
+    category               text,
+    featured               boolean,
+    features               text,
+    promotions             staging.t_promotion[],
+    multibuy               boolean,
+    "sizeUnit"             text,
+    "sourceId"             text,
+    "inTaxonomy"           boolean,
+    "isFeatured"           boolean,
+    "pageNumber"           text,
+    screenshot             text,
+    "sourceType"           text,
+    "taxonomyId"           integer,
+    nutritional            text,
+    "productInfo"          text,
+    "productRank"          integer,
+    "categoryType"         text,
+    "featuredRank"         integer,
+    "productBrand"         text,
+    "productImage"         text,
+    "productPrice"         double precision,
+    "productTitle"         text,
+    "reviewsCount"         integer,
+    "reviewsStars"         double precision,
+    "originalPrice"        double precision,
+    "pricePerWeight"       text,
+    "productInStock"       boolean,
+    "secondaryImages"      boolean,
+    "productDescription"   text,
+    "productTitleDetail"   text,
+    "promotionDescription" text,
+    "productOptions"       boolean,
+    shop                   text,
+    "amazonShop"           text,
+    choice                 text,
+    "amazonChoice"         text,
+    "lowStock"             boolean,
+    "sellParty"            text,
+    "amazonSellParty"      text,
+    sell                   text,
+    "fulfilParty"          text,
+    "amazonFulfilParty"    text,
+    "amazonSell"           text
+);
+
+
+
 DROP TYPE IF EXISTS staging.t_promotion_pp CASCADE;
 CREATE TYPE staging.t_promotion_pp AS
 (
@@ -84,33 +153,39 @@ $$;
 
 DROP TABLE IF EXISTS staging.test_file;
 CREATE TABLE staging.test_file AS
-SELECT fetched_data ->> 'retailer'                       AS retailer,
-       JSON_ARRAY_LENGTH(fetched_data -> 'products')     AS products_count,
-       fetched_data #>> '{products,0,date}'              AS date,
-       fetched_data ->> 'retailer' || '__' || created_at AS file_src,
-       PG_COLUMN_SIZE(fetched_data)                      AS size,
+SELECT params.retailer,
+       JSON_ARRAY_LENGTH(params.products)    AS products_count,
+       params.products #>> '{0,date}'        AS date,
+       params.retailer || '__' || created_at AS file_src,
+       PG_COLUMN_SIZE(fetched_data)          AS size,
        flag,
-       (fetched_data #> '{products,0}')::jsonb ? 'title' AS is_pp,
        fetched_data,
-       created_at
-FROM staging.retailer_daily_data;
-
-SELECT retailer,
-       products_count,
-       date,
-       file_src,
-       size,
-       flag,
        is_pp,
+       products,
        created_at
-FROM staging.test_file
-ORDER BY created_at DESC;
+FROM staging.retailer_daily_data
+         CROSS JOIN LATERAL (SELECT CASE
+                                        WHEN flag = 'create-products-pp' THEN COALESCE(
+                                                fetched_data #>> '{retailer, name}',
+                                                fetched_data #>> '{retailer}')
+                                        ELSE fetched_data #>> '{0, sourceType}' END AS retailer,
+                                    CASE
+                                        WHEN flag = 'create-products-pp' THEN fetched_data -> 'products'
+                                        ELSE fetched_data END                       AS products,
+                                    CASE
+                                        WHEN flag = 'create-products-pp'
+                                            THEN (fetched_data #> '{products,0}')::jsonb ? 'title'
+                                        ELSE FALSE
+                                        END                                         AS is_pp
+    ) AS params
+ORDER BY file_src;
+
 
 DROP TABLE IF EXISTS staging.tests_daily_data_pp;
 CREATE TABLE staging.tests_daily_data_pp AS
 SELECT file_src,
        product.date,
-       product.retailer,
+       test_file.retailer,
        product."countryCode",
        product."currency",
        product."sourceId",
@@ -129,24 +204,25 @@ SELECT file_src,
        fn_to_boolean(product."masterSku") AS "masterSku"
 FROM staging.test_file
          CROSS JOIN LATERAL JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
-                                                    fetched_data -> 'products') AS product
-WHERE test_file.flag = 'create-products-pp';
---WHERE test_file.retailer = 'aldi'
+                                                    products) AS product
+WHERE test_file.is_pp;
 
-SELECT COUNT(*)
-FROM staging.tests_daily_data_pp;
-
-SELECT fetched_data ->> 'retailer'                       AS retailer,
-       JSON_ARRAY_LENGTH(fetched_data -> 'products')     AS products_count,
-       fetched_data #>> '{products,0,date}'              AS date,
-       fetched_data ->> 'retailer' || '__' || created_at AS file_src,
-       PG_COLUMN_SIZE(fetched_data)                      AS size,
-       flag,
-       (fetched_data #> '{products,0}')::jsonb ? 'title' AS is_pp,
-       created_at
-FROM staging.retailer_daily_data
-ORDER BY file_src;
-
-SELECT *
+DROP TABLE IF EXISTS staging.tests_daily_data;
+CREATE TABLE staging.tests_daily_data AS
+SELECT file_src,
+       product.*
 FROM staging.test_file
-WHERE retailer = 'superdrug';
+         CROSS JOIN LATERAL JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
+                                                    products) AS product
+WHERE NOT test_file.is_pp;
+
+
+SELECT retailer,
+       products_count,
+       date,
+       file_src,
+       size,
+       flag,
+       is_pp,
+       created_at
+FROM staging.test_file;
