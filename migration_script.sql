@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json) RETURNS void
 AS
 $$
 BEGIN
-    INSERT INTO staging.retailer_daily_data (fetched_data)
+    INSERT INTO staging.retailer_daily_data11 (fetched_data)
     VALUES (value);
     RETURN;
 END;

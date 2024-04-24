@@ -2,7 +2,7 @@ DROP TABLE IF EXISTS staging.retailer_daily_data_all;
 CREATE TABLE staging.retailer_daily_data_all AS
 SELECT JSON_AGG(fetched_data) AS fetched_data
 FROM (SELECT *
-      FROM staging.retailer_daily_data
+      FROM staging.retailer_daily_data11
       LIMIT 1) AS retailer_daily_data
          CROSS JOIN LATERAL GENERATE_SERIES(1, 20) AS ret_id;
 

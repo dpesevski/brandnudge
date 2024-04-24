@@ -88,6 +88,7 @@ SELECT staging.load_retailer_data('{
 
 
 /*  remove coreProductCountryData duplicate records and add UQ constraint on "coreProductId", "countryId" */
+/*
 CREATE TABLE staging.fix_dup_coreProductCountryData_deleted_rec AS
 WITH coreProductCountryData_ext AS (SELECT *,
                                            ROW_NUMBER()
@@ -105,30 +106,43 @@ FROM deleted;
 ALTER TABLE "coreProductCountryData"
     ADD CONSTRAINT coreProductCountryData_pk
         UNIQUE ("coreProductId", "countryId");
+*/
+/*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
+CREATE UNIQUE INDEX coreProductCountryData_coreProductId_countryId_key
+    ON "coreProductCountryData" ("coreProductId", "countryId")
+    WHERE "createdAt" >= '2024-04-17';
 
 /*  temporary solution for fix_dup_products  */
 CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
     ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-02-29';
+    WHERE "createdAt" >= '2024-04-17';
+-- duplicates till last day.
 -- WHERE  "dateId">18166;
 
 /*  temporary solution for fix_dup_coreRetailerTaxonomies  */
 CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
     ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-02-29';-- WHERE  "dateId">18166;
+    WHERE "createdAt" >= '2024-04-17';-- WHERE  "dateId">18166;
 
-CREATE UNIQUE INDEX promotions_uq_key
-    ON promotions ("productId")
-    WHERE "createdAt" >= '2024-02-29';
 
 CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
     ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-02-29';
+    WHERE "createdAt" >= '2024-04-17';
 
 CREATE UNIQUE INDEX aggregatedProducts_uq_key
     ON "aggregatedProducts" ("productId")
-    WHERE "createdAt" >= '2024-02-29';
+    WHERE "createdAt" >= '2024-04-17';
 
+
+CREATE UNIQUE INDEX promotions_uq_key
+    ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
+/*
+    retailerPromotionId is the retailers regexp/mechanicId key
+
+    promoId is an actual promotion id
+    TO BE CHECKED if is unique and not null
+*/
+    WHERE "createdAt" >= '2024-04-17';
 /*  There are product entries in the daily load having more then one record for the category, "categoryType"
     This is for the same href/pageNumber where only featured, featuredRank and ProductRank vary.
 
@@ -216,10 +230,69 @@ CREATE TYPE staging.t_promotion AS
     description           text,
     mechanic              text
 );
+
+DROP TYPE IF EXISTS staging.retailer_data;
+CREATE TYPE staging.retailer_data AS
+(
+    retailer               retailers,
+    ean                    text,
+    date                   date,
+    href                   text,
+    size                   text,
+    "eposId"               text,
+    status                 text,
+    bundled                boolean,
+    category               text,
+    featured               boolean,
+    features               text,
+    promotions             staging.t_promotion[],
+    multibuy               boolean,
+    "sizeUnit"             text,
+    "sourceId"             text,
+    "inTaxonomy"           boolean,
+    "isFeatured"           boolean,
+    "pageNumber"           text,
+    screenshot             text,
+    "sourceType"           text,
+    "taxonomyId"           integer,
+    nutritional            text,
+    "productInfo"          text,
+    "productRank"          integer,
+    "categoryType"         text,
+    "featuredRank"         integer,
+    "productBrand"         text,
+    "productImage"         text,
+    "productPrice"         text,--double precision,
+    "productTitle"         text,
+    "reviewsCount"         integer,
+    "reviewsStars"         text,--double precision,
+    "originalPrice"        text,--double precision,
+    "pricePerWeight"       text,
+    "productInStock"       boolean,
+    "secondaryImages"      boolean,
+    "productDescription"   text,
+    "productTitleDetail"   text,
+    "promotionDescription" text,
+    "productOptions"       boolean,
+    shop                   text,
+    "amazonShop"           text,
+    choice                 text,
+    "amazonChoice"         text,
+    "lowStock"             boolean,
+    "sellParty"            text,
+    "amazonSellParty"      text,
+    sell                   text,
+    "fulfilParty"          text,
+    "amazonFulfilParty"    text,
+    "amazonSell"           text
+);
+
+
+/*
 DROP TABLE IF EXISTS staging.retailer_data;
 CREATE TABLE IF NOT EXISTS staging.retailer_data
 (
-    retailer               text,--retailers,
+    retailer               retailers, --text
     ean                    text,
     date                   date,
     href                   text,
@@ -271,6 +344,20 @@ CREATE TABLE IF NOT EXISTS staging.retailer_data
     "amazonFulfilParty"    text,
     "amazonSell"           text
 );
+*/
+CREATE OR REPLACE FUNCTION fn_to_float(value text) RETURNS double precision
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::float;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
 
 DROP FUNCTION IF EXISTS staging.compareTwoStrings(text, text);
 CREATE OR REPLACE FUNCTION staging.compareTwoStrings(title1 text, title2 text) RETURNS float
@@ -428,10 +515,61 @@ BEGIN
     */
     DROP TABLE IF EXISTS staging.tmp_daily_data;
     CREATE TABLE staging.tmp_daily_data AS
-    SELECT product.*
+    SELECT product.retailer,
+           ean,
+           product.date,
+           href,
+           product.size,
+           "eposId",
+           status,
+           bundled,
+           category,
+           featured,
+           features,
+           promotions,
+           multibuy,
+           "sizeUnit",
+           "sourceId",
+           "inTaxonomy",
+           "isFeatured",
+           "pageNumber",
+           screenshot,
+           "sourceType",
+           "taxonomyId",
+           nutritional,
+           "productInfo",
+           "productRank",
+           "categoryType",
+           "featuredRank",
+           "productBrand",
+           "productImage",
+           fn_to_float("productPrice")  AS "productPrice",
+           "productTitle",
+           "reviewsCount",
+           fn_to_float("reviewsStars")  AS "reviewsStars",
+           fn_to_float("originalPrice") AS "originalPrice",
+           "pricePerWeight",
+           "productInStock",
+           "secondaryImages",
+           "productDescription",
+           "productTitleDetail",
+           "promotionDescription",
+           "productOptions",
+           shop,
+           "amazonShop",
+           choice,
+           "amazonChoice",
+           "lowStock",
+           "sellParty",
+           "amazonSellParty",
+           sell,
+           "fulfilParty",
+           "amazonFulfilParty",
+           "amazonSell"
     FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
-                                 value -> 'products') AS product;
-
+                                 value) AS product;
+    /* value -> 'products' */
+    --RETURN;
     SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END
     INTO dd_date, dd_source_type, dd_sourceCategoryType
     FROM staging.tmp_daily_data
@@ -456,7 +594,7 @@ BEGIN
     WHERE name = dd_source_type;
 
     IF dd_retailer IS NULL THEN
-        INSERT INTO retailers (name, "countryId") VALUES (dd_source_type, 'GB') RETURNING * INTO dd_retailer;
+        INSERT INTO retailers (name, "countryId") VALUES (dd_source_type, 1) RETURNING * INTO dd_retailer; /*   1-GB */
     END IF;
 
     /*  create the new categories   */
@@ -867,6 +1005,7 @@ TO DO
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
+                 WHERE "createdAt" >= '2024-04-17'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"),
          ins_coreProductBarcodes AS (
@@ -973,7 +1112,7 @@ TO DO
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-02-29'
+                WHERE "createdAt" >= '2024-04-17'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*)
@@ -1088,7 +1227,7 @@ TO DO
              INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
     ON CONFLICT ("coreRetailerId",
         "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-02-29'
+    WHERE "createdAt" >= '2024-04-17'
         DO NOTHING;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
@@ -1127,8 +1266,8 @@ TO DO
            "promoId"
     FROM staging.tmp_product
              CROSS JOIN LATERAL UNNEST(promotions) AS promo
-    ON CONFLICT ("productId")
-    WHERE "createdAt" >= '2024-02-29'
+    ON CONFLICT ("productId", "retailerPromotionId")
+    WHERE "createdAt" >= '2024-04-17'
         DO
     UPDATE
     SET "startDate"=LEAST(promotions."startDate", excluded."startDate"),
@@ -1160,7 +1299,7 @@ TO DO
                          FROM "coreProductCountryData"
                          WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData USING ("coreProductId")
     ON CONFLICT ("productId")
-    WHERE "createdAt" >= '2024-02-29'
+    WHERE "createdAt" >= '2024-04-17'
         DO NOTHING;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
@@ -1192,7 +1331,7 @@ TO DO
     FROM staging.tmp_product
              CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
     ON CONFLICT ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-02-29'
+    WHERE "createdAt" >= '2024-04-17'
         DO NOTHING;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
@@ -1200,12 +1339,69 @@ TO DO
 END ;
 
 $$;
-
+/*
 DELETE
 FROM "productsData" USING products
 WHERE "productId" = products.id
-  AND products."createdAt" >= '2024-02-29';
+  AND products."createdAt" >= '2024-04-17';
 
 SELECT staging.load_retailer_data(fetched_data)
 FROM staging.retailer_daily_data;
 
+*/
+
+
+SELECT retailer,
+       products_count,
+       date,
+       file_src,
+       size,
+       flag,
+       is_pp,
+       created_at,
+       products #> '{0,sourceType}' AS sourceType
+FROM staging.test_file
+WHERE flag = 'create-products'
+  AND created_at = '2024-04-16 07:00:01.135625 +00:00';
+
+SELECT staging.load_retailer_data(fetched_data)
+FROM staging.retailer_daily_data
+WHERE flag = 'create-products'
+  AND created_at = '2024-04-16 09:06:05.747523+00';
+
+
+WITH tests_daily_data AS (SELECT *
+                          FROM staging.tmp_daily_data),
+     prod AS (SELECT "sourceId"
+              FROM tests_daily_data
+              WHERE promotions IS NOT NULL
+              GROUP BY 1
+              HAVING COUNT(*) > 1)
+SELECT "sourceId", promotions, *
+FROM tests_daily_data
+         INNER JOIN prod USING ("sourceId")
+ORDER BY "sourceId";
+
+SELECT "sourceId", promotions, *
+FROM staging.tmp_product
+WHERE "sourceId" = '2515540';
+
+
+
+WITH tests_daily_data AS (SELECT "sourceId",
+                                 "retailerPromotionId",
+                                 description,
+                                 "startDate",
+                                 "endDate",
+                                 "promoId"
+                          FROM staging.tmp_product
+                                   CROSS JOIN LATERAL UNNEST(promotions) AS promo),
+     prod AS (SELECT "sourceId",
+                     "promoId"
+              FROM tests_daily_data
+              GROUP BY 1, 2
+              HAVING COUNT(*) > 1)
+SELECT *
+FROM tests_daily_data
+         INNER JOIN prod USING ("sourceId", "promoId")
+ORDER BY "sourceId";

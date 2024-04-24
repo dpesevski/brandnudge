@@ -166,7 +166,7 @@ $$ LANGUAGE plv8;
 DROP TABLE IF EXISTS staging.prodv2;
 CREATE TABLE staging.prodv2 AS
 SELECT product.*
-FROM staging.retailer_daily_data
+FROM staging.retailer_daily_data11
          CROSS JOIN LATERAL staging.get_retailer_data_02_v8(fetched_data -> 'products') AS product;
 
 SELECT *
@@ -176,7 +176,7 @@ LIMIT 10;
 
 CREATE TABLE staging.prodv4 AS
 SELECT product.*
-FROM staging.retailer_daily_data
+FROM staging.retailer_daily_data11
          CROSS JOIN LATERAL JSONB_ARRAY_ELEMENTS(fetched_data -> 'products') AS product;
 
 SELECT *
@@ -188,7 +188,7 @@ DROP TABLE staging.prodv5;
 
 CREATE TABLE staging.prodv5 AS
 SELECT product.*
-FROM staging.retailer_daily_data
+FROM staging.retailer_daily_data11
          CROSS JOIN LATERAL JSONB_POPULATE_RECORDSET(NULL::staging.retailer_data,
                                                      fetched_data -> 'products') AS product;
 

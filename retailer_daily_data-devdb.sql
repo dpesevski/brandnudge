@@ -1,6 +1,6 @@
 CREATE SCHEMA staging;
 
-DROP TABLE IF EXISTS staging.retailer_daily_data CASCADE;
+DROP TABLE IF EXISTS staging.retailer_daily_data11 CASCADE;
 CREATE TABLE IF NOT EXISTS staging.retailer_daily_data
 (
     fetched_data json,
@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text = NU
 AS
 $$
 BEGIN
-    INSERT INTO staging.retailer_daily_data (fetched_data, flag)
+    INSERT INTO staging.retailer_daily_data11 (fetched_data, flag)
     VALUES (value, flag);
     RETURN;
 END;

@@ -3,7 +3,7 @@ SET work_mem TO '4GB'; --5463728KB
 CREATE TABLE staging.tmp_prod2 AS
 WITH data AS (SELECT fetched_data #> '{retailer}' AS "retailer",
                      product.*
-              FROM staging.retailer_daily_data
+              FROM staging.retailer_daily_data11
                        CROSS JOIN LATERAL JSONB_ARRAY_ELEMENTS(fetched_data #> '{products}') AS product_json
                        CROSS JOIN LATERAL (
                   SELECT product_json #>> '{ean}'                               AS "ean",
@@ -53,7 +53,7 @@ FROM data;
 CREATE TABLE staging.tmp_prod2 AS
 WITH data AS (SELECT fetched_data #> '{retailer}' AS "retailer",
                      product
-              FROM staging.retailer_daily_data
+              FROM staging.retailer_daily_data11
                        CROSS JOIN LATERAL JSONB_ARRAY_ELEMENTS(fetched_data #> '{products}') AS product)
 SELECT *
 FROM data;
@@ -99,7 +99,7 @@ WITH data AS (SELECT fetched_data #> '{retailer}' AS "retailer",
                      product."productDescription",
                      product."productTitleDetail",
                      product."promotionDescription"
-              FROM staging.retailer_daily_data
+              FROM staging.retailer_daily_data11
                        CROSS JOIN LATERAL JSONB_POPULATE_RECORDSET(NULL::staging.tmp_prod,
                                                                    fetched_data #> '{products}') AS product)
 SELECT *
