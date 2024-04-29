@@ -905,7 +905,7 @@ TO DO
     /*  findCreateProductCore
 
         - creates a coreProduct and coreProductBarcode if missing, otherwise
-        - updates disabled=true in coreProduct
+        - updates disabled=false in coreProduct
 
         logic on selecting coreProductId relating to coreProductBarcode, coreRetailer....
     */
