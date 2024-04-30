@@ -39,7 +39,7 @@ BEGIN
 
     DROP TABLE IF EXISTS staging.tmp_product_pp;
     CREATE TABLE staging.tmp_product_pp AS
-    WITH prod_brand AS (SELECT id                        AS "brandId",
+    WITH /*prod_brand AS (SELECT id                        AS "brandId",
                                name,
                                brand_names || name::text AS brand_names
                         FROM brands
@@ -54,80 +54,81 @@ BEGIN
                     |87     |{liberty,Liberty}|1365   |{apana liberty,liberty,Apna Liberty}|
                     +-------+-----------------+-------+------------------------------------+
          */
-    ),
-         tmp_daily_data_pp AS (SELECT product.date,
-                                      product."countryCode",
-                                      product."currency",
-                                      product."sourceId",
-                                      product.ean,
-                                      product."brand",
-                                      product."title",
-                                      fn_to_float(product."shelfPrice")                                 AS "shelfPrice",
-                                      fn_to_float(product."wasPrice")                                   AS "wasPrice",
-                                      fn_to_float(product."cardPrice")                                  AS "cardPrice",
-                                      fn_to_boolean(product."inStock")                                  AS "inStock",
-                                      fn_to_boolean(product."onPromo")                                  AS "onPromo",
-                                      COALESCE(product."promoData", ARRAY []::staging.t_promotion_pp[]) AS "promoData",
-                                      COALESCE(product."skuURL", '')                                    AS href,
-                                      product."imageURL",
-                                      COALESCE(fn_to_boolean(product."bundled"), FALSE)                 AS "bundled",
-                                      COALESCE(fn_to_boolean(product."masterSku"), FALSE)               AS "productOptions",
-                                      shop,
-                                      "amazonShop",
-                                      choice,
-                                      "amazonChoice",
-                                      "lowStock",
-                                      "sellParty",
-                                      "amazonSellParty",
-                                      sell,
-                                      "fulfilParty",
-                                      "amazonFulfilParty",
-                                      "amazonSell",
-                                      ROW_NUMBER() OVER (PARTITION BY "sourceId")                       AS rownum -- use only the first sourceId record
-                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
-                                                            value #> '{products}') AS product),
-         dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice") AS "originalPrice",
-                                "shelfPrice"                       AS "productPrice",
-                                "shelfPrice",
-                                COALESCE("brand", '')              AS "productBrand",
+    ),*/
+        prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
+        tmp_daily_data_pp AS (SELECT product.date,
+                                     product."countryCode",
+                                     product."currency",
+                                     product."sourceId",
+                                     product.ean,
+                                     product."brand",
+                                     product."title",
+                                     fn_to_float(product."shelfPrice")                                 AS "shelfPrice",
+                                     fn_to_float(product."wasPrice")                                   AS "wasPrice",
+                                     fn_to_float(product."cardPrice")                                  AS "cardPrice",
+                                     fn_to_boolean(product."inStock")                                  AS "inStock",
+                                     fn_to_boolean(product."onPromo")                                  AS "onPromo",
+                                     COALESCE(product."promoData", ARRAY []::staging.t_promotion_pp[]) AS "promoData",
+                                     COALESCE(product."skuURL", '')                                    AS href,
+                                     product."imageURL",
+                                     COALESCE(fn_to_boolean(product."bundled"), FALSE)                 AS "bundled",
+                                     COALESCE(fn_to_boolean(product."masterSku"), FALSE)               AS "productOptions",
+                                     shop,
+                                     "amazonShop",
+                                     choice,
+                                     "amazonChoice",
+                                     "lowStock",
+                                     "sellParty",
+                                     "amazonSellParty",
+                                     sell,
+                                     "fulfilParty",
+                                     "amazonFulfilParty",
+                                     "amazonSell",
+                                     ROW_NUMBER() OVER (PARTITION BY "sourceId")                       AS rownum -- use only the first sourceId record
+                              FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
+                                                           value #> '{products}') AS product),
+        dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice") AS "originalPrice",
+                               "shelfPrice"                       AS "productPrice",
+                               "shelfPrice",
+                               COALESCE("brand", '')              AS "productBrand",
 
-                                'listing'                          AS status,
+                               'listing'                          AS status,
 
-                                COALESCE("title", '')              AS "productTitle",
-                                COALESCE("imageURL", '')           AS "productImage",
-                                COALESCE("inStock", TRUE)          AS "productInStock",
+                               COALESCE("title", '')              AS "productTitle",
+                               COALESCE("imageURL", '')           AS "productImage",
+                               COALESCE("inStock", TRUE)          AS "productInStock",
 
-                                date,
-                                "countryCode",
-                                "currency",
-                                ean,
-                                "brand",
-                                "title",
-                                href,
+                               date,
+                               "countryCode",
+                               "currency",
+                               ean,
+                               "brand",
+                               "title",
+                               href,
 
-                                "sourceId",
-                                "cardPrice",
-                                "bundled",
-                                "productOptions",
-                                "promoData",
-                                "onPromo",
+                               "sourceId",
+                               "cardPrice",
+                               "bundled",
+                               "productOptions",
+                               "promoData",
+                               "onPromo",
 
-                                shop,
-                                "amazonShop",
-                                choice,
-                                "amazonChoice",
-                                "lowStock",
-                                "sellParty",
-                                "amazonSellParty",
-                                sell,
-                                "fulfilParty",
-                                "amazonFulfilParty",
-                                "amazonSell",
+                               shop,
+                               "amazonShop",
+                               choice,
+                               "amazonChoice",
+                               "lowStock",
+                               "sellParty",
+                               "amazonSellParty",
+                               sell,
+                               "fulfilParty",
+                               "amazonFulfilParty",
+                               "amazonSell",
 
-                                ROW_NUMBER() OVER ()               AS index
-                         FROM tmp_daily_data_pp
+                               ROW_NUMBER() OVER ()               AS index
+                        FROM tmp_daily_data_pp
 
-                         WHERE rownum = 1)
+                        WHERE rownum = 1)
 
     SELECT NULL::integer                                                       AS id,
            dd_retailer.name                                                    AS "sourceType",
@@ -241,8 +242,8 @@ BEGIN
                                                                                                                    promo_description,
                                                                                                                    multibuy_price)
         ) AS trsf_promo
-             LEFT OUTER JOIN prod_brand ON (ARRAY ["productBrand"] && brand_names);
-
+        --   LEFT OUTER JOIN prod_brand ON (ARRAY ["productBrand"] && brand_names);
+             LEFT OUTER JOIN prod_brand USING ("productBrand");
 
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
@@ -779,3 +780,12 @@ WITH prod_brand AS (SELECT id                        AS "brandId",
 SELECT *
 FROM prod_brand a
          INNER JOIN prod_brand b ON a."brandId" < b."brandId" AND a.brand_names && b.brand_names
+
+
+
+SELECT id                        AS "brandId",
+       name,
+       brand_names || name::text AS brand_names
+FROM brands
+         CROSS JOIN LATERAL ( SELECT ARRAY_AGG(brand_name) AS brand_names
+                              FROM JSON_ARRAY_ELEMENTS_TEXT("checkList"::json) AS t(brand_name)) AS elements
