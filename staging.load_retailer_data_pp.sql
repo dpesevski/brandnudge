@@ -31,18 +31,30 @@ BEGIN
     FROM JSON_POPULATE_RECORD(NULL::retailers,
                               value #> '{retailer}') AS retailer;
 
-    SELECT id
-    INTO dd_date_id
-    FROM dates
-    WHERE date = dd_date AT TIME ZONE 'UTC';
 
-    IF dd_date_id IS NULL THEN
-        INSERT INTO dates (date) VALUES (dd_date) RETURNING id INTO dd_date_id;
-    END IF;
+    INSERT INTO dates (date)
+    VALUES (dd_date AT TIME ZONE 'UTC')
+    ON CONFLICT DO NOTHING
+    RETURNING id INTO dd_date_id;
 
     DROP TABLE IF EXISTS staging.tmp_product_pp;
     CREATE TABLE staging.tmp_product_pp AS
-    WITH prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
+    WITH prod_brand AS (SELECT id                        AS "brandId",
+                               name,
+                               brand_names || name::text AS brand_names
+                        FROM brands
+                                 CROSS JOIN LATERAL ( SELECT ARRAY_AGG(brand_name) AS brand_names
+                                                      FROM JSON_ARRAY_ELEMENTS_TEXT("checkList"::json) AS t(brand_name)) AS elements
+                        WHERE id NOT IN (87, 1365)
+        /*
+                    if brand.checklist is to be used, it should be enforced that the values do not overlap.
+                    +-------+-----------------+-------+------------------------------------+
+                    |brandId|brand_names      |brandId|brand_names                         |
+                    +-------+-----------------+-------+------------------------------------+
+                    |87     |{liberty,Liberty}|1365   |{apana liberty,liberty,Apna Liberty}|
+                    +-------+-----------------+-------+------------------------------------+
+         */
+    ),
          tmp_daily_data_pp AS (SELECT product.date,
                                       product."countryCode",
                                       product."currency",
@@ -229,7 +241,8 @@ BEGIN
                                                                                                                    promo_description,
                                                                                                                    multibuy_price)
         ) AS trsf_promo
-             LEFT OUTER JOIN prod_brand USING ("productBrand");
+             LEFT OUTER JOIN prod_brand ON (ARRAY ["productBrand"] && brand_names);
+
 
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
@@ -758,3 +771,11 @@ FROM data_comp a
                         AND a.name LIKE b.name || '%'
 GROUP BY a.name;
 
+WITH prod_brand AS (SELECT id                        AS "brandId",
+                           brand_names || name::text AS brand_names
+                    FROM brands
+                             CROSS JOIN LATERAL ( SELECT ARRAY_AGG(LOWER(brand_name)) AS brand_names
+                                                  FROM JSON_ARRAY_ELEMENTS_TEXT("checkList"::json) AS t(brand_name)) AS elements)
+SELECT *
+FROM prod_brand a
+         INNER JOIN prod_brand b ON a."brandId" < b."brandId" AND a.brand_names && b.brand_names

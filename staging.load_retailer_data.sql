@@ -133,6 +133,9 @@ CREATE UNIQUE INDEX aggregatedProducts_uq_key
     ON "aggregatedProducts" ("productId")
     WHERE "createdAt" >= '2024-04-17';
 
+CREATE UNIQUE INDEX dates_uq_key
+    ON "dates" ("date")
+    WHERE "createdAt" >= '2024-04-17';
 
 CREATE UNIQUE INDEX promotions_uq_key
     ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
@@ -579,13 +582,11 @@ BEGIN
     /*  dates.findOrCreate  */
     /*  TO DO:  add UQ constraint on date   */
 
-    SELECT id
-    INTO dd_date_id
-    FROM dates
-    WHERE date = dd_date AT TIME ZONE 'UTC';
-    IF dd_date_id IS NULL THEN
-        INSERT INTO dates (date) VALUES (dd_date) RETURNING id INTO dd_date_id;
-    END IF;
+
+    INSERT INTO dates (date)
+    VALUES (dd_date AT TIME ZONE 'UTC')
+    ON CONFLICT DO NOTHING
+    RETURNING id INTO dd_date_id;
 
     /*  RetailerService.getRetailerByName   */
     SELECT *
@@ -1377,7 +1378,7 @@ LIMIT 1 OFFSET 2;
 
 SELECT "sourceId", promotions, *
 FROM staging.tmp_product
-where array_length(promotions,1)>1;
+WHERE ARRAY_LENGTH(promotions, 1) > 1;
 WHERE "sourceId" = '2515540';
 
 
@@ -1411,8 +1412,6 @@ SELECT "sourceId", promotions, *
 FROM tests_daily_data
          INNER JOIN prod USING ("sourceId")
 ORDER BY "sourceId";
-
-
 
 
 
