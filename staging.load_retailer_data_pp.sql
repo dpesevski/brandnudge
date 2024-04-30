@@ -60,6 +60,17 @@ BEGIN
                                       product."imageURL",
                                       COALESCE(fn_to_boolean(product."bundled"), FALSE)                 AS "bundled",
                                       COALESCE(fn_to_boolean(product."masterSku"), FALSE)               AS "productOptions",
+                                      shop,
+                                      "amazonShop",
+                                      choice,
+                                      "amazonChoice",
+                                      "lowStock",
+                                      "sellParty",
+                                      "amazonSellParty",
+                                      sell,
+                                      "fulfilParty",
+                                      "amazonFulfilParty",
+                                      "amazonSell",
                                       ROW_NUMBER() OVER (PARTITION BY "sourceId")                       AS rownum -- use only the first sourceId record
                                FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
                                                             value #> '{products}') AS product),
@@ -88,15 +99,28 @@ BEGIN
                                 "productOptions",
                                 "promoData",
                                 "onPromo",
+
+                                shop,
+                                "amazonShop",
+                                choice,
+                                "amazonChoice",
+                                "lowStock",
+                                "sellParty",
+                                "amazonSellParty",
+                                sell,
+                                "fulfilParty",
+                                "amazonFulfilParty",
+                                "amazonSell",
+
                                 ROW_NUMBER() OVER ()               AS index
                          FROM tmp_daily_data_pp
 
                          WHERE rownum = 1)
 
-    SELECT NULL                                                                AS id,
+    SELECT NULL::integer                                                       AS id,
            dd_retailer.name                                                    AS "sourceType",
-           trsf_ean."EANs"[1]                                                  AS ean,
-           COALESCE(ARRAY_LENGTH(trsf_promo.promotions, 1) > 0, FALSE)         AS products_promotions_flag,
+           checkEAN.ean,
+           -- COALESCE(ARRAY_LENGTH(trsf_promo.promotions, 1) > 0, FALSE)         AS products_promotions_flag,
            COALESCE(trsf_promo."promotionDescription", '')                     AS "promotionDescription",
            ''                                                                  AS features,
            dd_products.date,
@@ -104,17 +128,17 @@ BEGIN
            dd_products."productBrand",
            dd_products."productTitle",
            dd_products."productImage",
-           FALSE                                                               AS secondaryImages,
+           FALSE                                                               AS "secondaryImages",
            ''                                                                  AS "productDescription",
            ''                                                                  AS "productInfo",
            dd_products."originalPrice"                                         AS "promotedPrice",
            dd_products."productInStock",
            TRUE                                                                AS "productInListing",
-           NULL                                                                AS "reviewsCount",
-           NULL                                                                AS "reviewsStars",
+           NULL::integer                                                       AS "reviewsCount",
+           NULL::float                                                         AS "reviewsStars",
            NULL                                                                AS "eposId",
            COALESCE(trsf_promo.is_multibuy, FALSE)                             AS multibuy,
-           NULL                                                                AS "coreProductId",
+           NULL::integer                                                       AS "coreProductId",
            dd_retailer.id                                                      AS "retailerId",
            NOW()                                                               AS "createdAt",
            NOW()                                                               AS "updatedAt",
@@ -137,7 +161,22 @@ BEGIN
            dd_products."originalPrice",
            dd_products."productPrice",
            dd_products.status,
+           dd_products."productOptions",
 
+           dd_products.shop,
+           dd_products."amazonShop",
+           dd_products.choice,
+           dd_products."amazonChoice",
+           dd_products."lowStock",
+           dd_products."sellParty",
+           dd_products."amazonSellParty",
+           dd_products.sell,
+           dd_products."fulfilParty",
+           dd_products."amazonFulfilParty",
+           dd_products."amazonSell",
+
+           checkEAN."eanIssues",
+           dd_ranking.screenshot,
            prod_brand."brandId",
            dd_ranking::"productsData",
            trsf_ean."EANs",
@@ -169,9 +208,13 @@ BEGIN
                    ELSE
                        STRING_TO_ARRAY(dd_products.ean, ',') END AS "EANs"
         ) AS trsf_ean
+             CROSS JOIN LATERAL ( SELECT trsf_ean."EANs"[1]                                                 AS ean,
+                                         trsf_ean."EANs"[1] !~
+                                         '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$' AS "eanIssues"
+        ) AS checkEAN
              CROSS JOIN LATERAL ( SELECT ARRAY_AGG(
                                                  (
-                                                  promo_id,-- AS "promoId",
+                                                  CASE WHEN promo_id = '' THEN NULL ELSE promo_id END,-- AS "promoId",
                                                   NULL,--"retailerPromotionId"
                                                   NULL,-- AS "startDate",
                                                   NULL,--AS "endDate"
@@ -203,6 +246,10 @@ BEGIN
                                   promo_indx,
                                   lat_dates."startDate",
                                   lat_dates."endDate",
+
+                                  "promotedPrice",
+                                  "shelfPrice",
+                                  "productPrice",
 
                                   lat_promo_id."promoId",
                                   promo.description,
@@ -261,9 +308,40 @@ BEGIN
                                                                 promo_desc_trsf.desc ~ ret_promo.regexp
                                                             END
                                                         )),
+         promo_price_calc AS (SELECT "sourceId",
+                                     description,
+                                     "multibuyPrice",
+                                     "promoId",
+                                     "retailerPromotionId",
+                                     "startDate",
+                                     "endDate",
+                                     "promotionMechanicName",
+                                     promo_indx,
+                                     price_calc."promotedPrice",
+                                     price_calc."shelfPrice",
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "sourceId" ORDER BY price_calc."promotedPrice", "multibuyPrice" NULLS LAST ) AS promo_price_order
+                              FROM product_promo
+                                       CROSS JOIN LATERAL (SELECT CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
+                                                                          COALESCE("multibuyPrice",
+                                                                                   staging.calculateMultibuyPrice(
+                                                                                           description,
+                                                                                           "promotedPrice")
+                                                                          )
+                                                                      ELSE "productPrice"
+                                                                      END AS "promotedPrice",
+                                                                  CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
+                                                                          "shelfPrice"
+                                                                      ELSE
+                                                                          "productPrice"
+                                                                      END AS "shelfPrice") AS price_calc
+                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+         ),
          upd_product_promo AS (SELECT "sourceId",
-                                      MAX(description) FILTER (WHERE "promotionMechanicName" = 'Multibuy')     AS Multibuy_description,
-                                      MAX("multibuyPrice") FILTER (WHERE "promotionMechanicName" = 'Multibuy') AS "multibuyPrice",
+                                      MAX("promotedPrice") FILTER (WHERE promo_price_order = 1) AS "promotedPrice",
+                                      MAX("shelfPrice") FILTER (WHERE promo_price_order = 1)    AS "shelfPrice",
                                       ARRAY_AGG(("promoId",
                                                  "retailerPromotionId",
                                                  "startDate",
@@ -271,31 +349,372 @@ BEGIN
                                                  description,
                                                  "promotionMechanicName",
                                                  "multibuyPrice")::staging.t_promotion_mb
-                                                ORDER BY promo_indx)                                           AS promotions
-                               FROM product_promo
-                               WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+                                                ORDER BY promo_indx)                            AS promotions
+                               FROM promo_price_calc
                                GROUP BY 1)
     UPDATE staging.tmp_product_pp
-    SET promotions=upd_product_promo.promotions,
-        "promotedPrice" = CASE
-                              WHEN tmp_product_pp.multibuy THEN
-                                  COALESCE(upd_product_promo."multibuyPrice",
-                                           staging.calculateMultibuyPrice(upd_product_promo.Multibuy_description,
-                                                                          all_products."promotedPrice")
-                                  )
-                              ELSE all_products."productPrice"
-            END,
-        "shelfPrice" = CASE
-                           WHEN tmp_product_pp.multibuy
-                               THEN tmp_product_pp."shelfPrice"
-                           ELSE
-                               all_products."productPrice"
-            END
-    FROM staging.tmp_product_pp AS all_products
-             LEFT OUTER JOIN upd_product_promo
-                             ON all_products."sourceId" = upd_product_promo."sourceId"
-    WHERE tmp_product_pp."sourceId" = all_products."sourceId";
+    SET promotions      = upd_product_promo.promotions,
+        "promotedPrice" = upd_product_promo."promotedPrice",
+        "shelfPrice"    = upd_product_promo."shelfPrice"
+    FROM upd_product_promo
+    WHERE tmp_product_pp."sourceId" = upd_product_promo."sourceId";
 
+    --RETURN;
+
+    /*  createCoreBy    */
+    WITH coreProductData AS (SELECT ean,
+                                    "productTitle"                    AS title,
+                                    "productImage"                    AS image,
+                                    "brandId",
+                                    bundled,
+                                    "secondaryImages",
+                                    "productDescription"              AS description,
+                                    features,
+                                    "productInfo"                     AS ingredients,
+                                    size,
+                                    nutritional                       AS specification,
+                                    COALESCE("productOptions", FALSE) AS "productOptions",
+                                    "eanIssues"
+                             FROM staging.tmp_product_pp),
+         ins_coreProducts AS (
+             INSERT
+                 INTO "coreProducts" (ean,
+                                      title,
+                                      image,
+                                      "secondaryImages",
+                                      description,
+                                      features,
+                                      ingredients,
+                                      "brandId",
+                     --"categoryId",
+                     --"productGroupId",
+                                      "createdAt",
+                                      "updatedAt",
+                                      bundled,
+                                      disabled,
+                                      "eanIssues",
+                                      specification,
+                                      size,
+                     --reviewed,
+                                      "productOptions")
+                     SELECT ean,
+                            title,
+                            image,
+                            "secondaryImages",
+                            description,
+                            features,
+                            ingredients,
+                            "brandId",
+                            --"categoryId",
+                            --"productGroupId",
+                            NOW() AS "createdAt",
+                            NOW() AS "updatedAt",
+                            bundled,
+                            FALSE    disabled,
+                            "eanIssues",
+                            specification,
+                            size,
+                            --reviewed,
+                            "productOptions"
+                     FROM coreProductData
+                     ON CONFLICT (ean) DO UPDATE
+                         SET disabled = FALSE,
+                             "productOptions" = excluded."productOptions",
+                             "updatedAt" = excluded."updatedAt"
+                     RETURNING *),
+        /*  createProductCountryData    */
+         ins_prod_country_data AS (INSERT INTO "coreProductCountryData" ("coreProductId",
+                                                                         "countryId",
+                                                                         title,
+                                                                         image,
+                                                                         description,
+                                                                         features,
+                                                                         ingredients,
+                                                                         specification,
+                                                                         "createdAt",
+                                                                         "updatedAt",
+                                                                         "secondaryImages",
+                                                                         bundled,
+                                                                         disabled,
+                                                                         reviewed)
+             SELECT id AS "coreProductId",
+                    dd_retailer."countryId",
+                    title,
+                    image,
+                    description,
+                    features,
+                    ingredients,
+                    specification,
+                    NOW(),
+                    NOW(),
+                    "secondaryImages",
+                    bundled,
+                    disabled,
+                    reviewed
+             --"ownLabelManufacturerId",
+             --"brandbankManaged"
+             FROM ins_coreProducts
+             --WHERE "updatedAt" != "createdAt"
+             WHERE "updatedAt" >= NOW()::date
+             ON CONFLICT ("coreProductId", "countryId")
+                 WHERE "createdAt" >= '2024-04-17'
+                 DO UPDATE
+                     SET "updatedAt" = excluded."updatedAt"),
+         ins_coreProductBarcodes AS (
+             INSERT
+                 INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt")
+                     SELECT id, ean, NOW(), NOW()
+                     FROM ins_coreProducts
+                     WHERE "updatedAt" >= NOW()::date
+                     ON CONFLICT (barcode)
+                         DO UPDATE
+                             SET "updatedAt" = excluded."updatedAt")
+    UPDATE staging.tmp_product_pp
+    SET "coreProductId"=ins_coreProducts.id
+    FROM ins_coreProducts
+    WHERE tmp_product_pp.ean = ins_coreProducts.ean;
+
+
+    /*  createProductBy    */
+    WITH ins_products AS (
+        INSERT INTO products ("sourceType",
+                              ean,
+                              promotions,
+                              "promotionDescription",
+                              features,
+                              date,
+                              "sourceId",
+                              "productBrand",
+                              "productTitle",
+                              "productImage",
+                              "secondaryImages",
+                              "productDescription",
+                              "productInfo",
+                              "promotedPrice",
+                              "productInStock",
+                              "reviewsCount",
+                              "reviewsStars",
+                              "eposId",
+                              multibuy,
+                              "coreProductId",
+                              "retailerId",
+                              "createdAt",
+                              "updatedAt",
+                              size,
+                              "pricePerWeight",
+                              href,
+                              nutritional,
+                              "basePrice",
+                              "shelfPrice",
+                              "productTitleDetail",
+                              "sizeUnit",
+                              "dateId")
+            SELECT "sourceType",
+                   ean,
+                   COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
+                   "promotionDescription",
+                   features,
+                   date,
+                   "sourceId",
+                   "productBrand",
+                   "productTitle",
+                   new_img."productImage",
+                   "secondaryImages",
+                   "productDescription",
+                   "productInfo",
+                   "promotedPrice",
+                   "productInStock",
+                   --  "productInListing",
+                   "reviewsCount",
+                   "reviewsStars",
+                   "eposId",
+                   multibuy,
+                   "coreProductId",
+                   "retailerId",
+                   NOW()                                            AS "createdAt",
+                   NOW()                                            AS "updatedAt",
+                   -- "imageId",
+                   size,
+                   "pricePerWeight",
+                   href,
+                   nutritional,
+                   "basePrice",
+                   "shelfPrice",
+                   "productTitleDetail",
+                   "sizeUnit",
+                   "dateId"
+            FROM staging.tmp_product_pp
+                     CROSS JOIN LATERAL (SELECT CASE
+                                                    WHEN "sourceType" = 'sainsburys' THEN
+                                                        REPLACE(
+                                                                REPLACE(
+                                                                        'https://www.sainsburys.co.uk' ||
+                                                                        "productImage",
+                                                                        'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
+                                                                        'https://www.sainsburys.co.uk'),
+                                                                'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
+                                                                'https://assets.sainsburys-groceries.co.uk')
+                                                    WHEN "sourceType" = 'ocado' THEN REPLACE(
+                                                            'https://www.ocado.com' || "productImage",
+                                                            'https://www.ocado.comhttps://ocado.com',
+                                                            'https://www.ocado.com')
+                                                    WHEN "sourceType" = 'morrisons' THEN
+                                                        'https://groceries.morrisons.com' || "productImage"
+                                                    END AS "productImage"
+
+                ) AS new_img
+            ON CONFLICT ("sourceId", "retailerId", "dateId")
+                WHERE "createdAt" >= '2024-04-17'
+                DO UPDATE
+                    SET "updatedAt" = excluded."updatedAt"
+            RETURNING products.*)
+    UPDATE staging.tmp_product_pp
+    SET id=ins_products.id
+    FROM ins_products
+    WHERE tmp_product_pp."sourceId" = ins_products."sourceId"
+      AND tmp_product_pp."retailerId" = ins_products."retailerId"
+      AND tmp_product_pp."dateId" = ins_products."dateId";
+
+    /*  createAmazonProduct */
+    /*
+       TO DO: set UQ constrain in amazonProducts on productId?.
+     */
+    INSERT INTO "amazonProducts" ("productId",
+                                  shop,
+                                  choice,
+                                  "lowStock",
+                                  "sellParty",
+                                  sell,
+                                  "fulfilParty",
+                                  "createdAt",
+                                  "updatedAt")
+    SELECT id                                                                         AS "productId",
+           COALESCE(COALESCE(product."amazonShop", product.shop), '')                 AS shop,
+           COALESCE(COALESCE(product."amazonChoice", product.choice), '')             AS choice,
+           COALESCE(product."lowStock", FALSE)                                        AS "lowStock",
+           COALESCE(COALESCE(product."amazonSellParty", product."sellParty"), '')     AS "sellParty",
+           COALESCE(COALESCE(product."amazonSell", product."sell"), '')               AS "sell",
+           COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
+           NOW(),
+           NOW()
+    FROM staging.tmp_product_pp AS product
+    WHERE LOWER("sourceType") LIKE '%amazon%';
+
+
+    /*  setCoreRetailer */
+    DROP TABLE IF EXISTS staging.tmp_coreRetailer;
+    CREATE TABLE staging.tmp_coreRetailer AS
+    WITH ins_coreRetailers AS (
+        INSERT INTO "coreRetailers" ("coreProductId",
+                                     "retailerId",
+                                     "productId",
+                                     "createdAt",
+                                     "updatedAt")
+            SELECT product."coreProductId",
+                   dd_retailer.id,
+                   product.id AS "productId",
+                   NOW()      AS "createdAt",
+                   NOW()      AS "updatedAt"
+            FROM staging.tmp_product_pp AS product
+            ON CONFLICT ("coreProductId",
+                "retailerId",
+                "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
+            RETURNING "coreRetailers".*)
+    SELECT id,
+           "coreProductId",
+           "retailerId",
+           "productId"::integer,
+           "createdAt",
+           "updatedAt"
+    FROM ins_coreRetailers;
+
+
+    /*  saveProductStatus   */
+    INSERT INTO "productStatuses" ("productId",
+                                   status,
+                                   screenshot,
+                                   "createdAt",
+                                   "updatedAt")
+    SELECT id AS "productId",
+           status,
+           screenshot,
+           NOW(),
+           NOW()
+    FROM staging.tmp_product_pp
+    ON CONFLICT ("productId")
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
+
+    /*  PromotionService.processProductPromotions, part 2 insert promotions  */
+    INSERT INTO promotions ("retailerPromotionId",
+                            "productId",
+                            description,
+                            "startDate",
+                            "endDate",
+                            "createdAt",
+                            "updatedAt",
+                            "promoId")
+    SELECT "retailerPromotionId",
+           id    AS "productId",
+           description,
+           "startDate",
+           "endDate",
+           NOW() AS "createdAt",
+           NOW() AS "updatedAt",
+           "promoId"
+    FROM staging.tmp_product_pp
+             CROSS JOIN LATERAL UNNEST(promotions) AS promo
+    ON CONFLICT ("productId", "promoId")
+    WHERE "createdAt" >= '2024-04-17'
+        DO
+    UPDATE
+    SET "startDate"=LEAST(promotions."startDate", excluded."startDate"),
+        "endDate"=GREATEST(promotions."endDate", excluded."endDate"),
+        "updatedAt" = excluded."updatedAt";
+
+    /*  aggregatedProducts  */
+    INSERT INTO "aggregatedProducts" ("titleMatch",
+                                      "productId",
+                                      "createdAt",
+                                      "updatedAt"
+        /*
+        TO DO:
+        Handle the rest of the "match" scores:
+            features,
+            specification,
+            size,
+            description,
+            ingredients,
+            "imageMatch"
+         */
+    )
+    SELECT staging.compareTwoStrings("titleParent", "productTitle") AS "titleMatch",
+           id                                                       AS "productId",
+           NOW()                                                    AS "createdAt",
+           NOW()                                                       "updatedAt"
+    FROM staging.tmp_product_pp
+             INNER JOIN (SELECT "coreProductId", title AS "titleParent"
+                         FROM "coreProductCountryData"
+                         WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData USING ("coreProductId")
+    ON CONFLICT ("productId")
+    WHERE "createdAt" >= '2024-04-17'
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
+
+    /*  coreRetailerDates */
+    INSERT INTO "coreRetailerDates" ("coreRetailerId",
+                                     "dateId",
+                                     "createdAt",
+                                     "updatedAt")
+    SELECT tmp_coreRetailer.id AS "coreRetailerId",
+           dd_date_id          AS "dateId",
+           NOW(),
+           NOW()
+    FROM staging.tmp_coreRetailer
+    ON CONFLICT ("coreRetailerId",
+        "dateId")
+        DO NOTHING;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     RETURN;
 END ;
@@ -304,117 +723,28 @@ $$;
 SELECT staging.load_retailer_data_pp(fetched_data)
 FROM staging.retailer_daily_data
 WHERE flag = 'create-products-pp'
-  AND created_at = '2024-04-16 08:00:00.878527+00'
-LIMIT 1 OFFSET 1;
+  AND created_at = '2024-04-16 08:00:00.878527+00';
 
 
+SELECT COUNT(*)
+FROM staging.tmp_product_pp;
+
+SELECT COUNT(*)
+FROM products
+WHERE id > 196238805;
 
 SELECT *
 FROM staging.tmp_product_pp
-WHERE multibuy;
+WHERE ARRAY_LENGTH(promotions, 1) > 1;
 
 
 SELECT *
-FROM staging.tests_daily_data_pp
-WHERE "sourceId" = '153792'
-  AND file_src = 'b&m__2024-04-16 08:00:00.878527+00';
+FROM products
+WHERE id IN (
+             196400478,
+             196403680
+    );
 
-
-
-SELECT brand, COUNT(*)
-FROM staging.tests_daily_data_pp
-GROUP BY brand;
-
-SELECT DISTINCT file_src
-FROM staging.tests_daily_data_pp
-WHERE brand = 'Cadbury';
-
-WHERE "sourceId" = '258640'
-  AND file_src = 'b&m__2024-04-16 08:00:00.878527+00';
-
-
-SELECT DISTINCT --"sourceId",
-                promo_type,
-                promo_description,
-                multibuy_price
-FROM staging.tests_daily_data_pp
-         CROSS JOIN LATERAL UNNEST("promoData") AS promo
-WHERE multibuy_price IS NOT NULL
-  AND file_src = 'b&m__2024-04-16 08:00:00.878527+00';
-
-
-
-SELECT file_src, "sourceId"
-FROM staging.tests_daily_data_pp
-GROUP BY 1, 2
-HAVING COUNT(*) > 1;
-
-SELECT id AS "brandId", name AS "productBrand"
-FROM brands
-WHERE name LIKE 'B&%';
-
-WITH brands AS (SELECT id, name FROM brands),
-     product_brands AS (SELECT brand, COUNT(*) AS rec_cnt
-                        FROM staging.tests_daily_data_pp
-                        WHERE brand != ''
-                        GROUP BY brand),
-     product_brands_unmatched AS (SELECT product_brands.brand
-                                  FROM product_brands
-                                           LEFT OUTER JOIN brands ON (brands.name = brand)
-                                  WHERE brands.id IS NULL),
-     prod_brand_possible_match AS (SELECT brand, STRING_AGG(brands_like.name, ',') AS similar_brands
-                                   FROM product_brands_unmatched
-                                            INNER JOIN brands AS brands_like
-                                                       ON (brands_like.name LIKE brand || '%')
-                                   GROUP BY brand)
-SELECT *
-FROM prod_brand_possible_match
-         INNER JOIN product_brands USING (brand)
-ORDER BY rec_cnt DESC;
-
-
-SET pg_trgm.similarity_threshold = 0.8; -- Postgres 9.6 or later
-
-WITH brands AS (SELECT id, name FROM brands),
-     product_brands AS (SELECT brand, COUNT(*) AS rec_cnt
-                        FROM staging.tests_daily_data_pp
-                        WHERE brand != ''
-                        GROUP BY brand),
-     product_brands_unmatched AS (SELECT product_brands.brand
-                                  FROM product_brands
-                                           LEFT OUTER JOIN brands ON (brands.name = brand)
-                                  WHERE brands.id IS NULL),
-     prod_brand_possible_match AS (SELECT umbrands.brand, STRING_AGG(brands.name, ',') AS similar_brands
-                                   FROM product_brands_unmatched umbrands
-                                            JOIN brands ON LOWER(umbrands.brand) != LOWER(brands.name) AND
-                                                           TO_TSVECTOR(umbrands.brand) @@ PLAINTO_TSQUERY(brands.name)
-                                   --                    umbrands.brand % brands.name
-                                   GROUP BY brand)
-SELECT *
-FROM prod_brand_possible_match
-         INNER JOIN product_brands USING (brand)
-ORDER BY rec_cnt DESC;
-
-
-
-WITH brands AS (SELECT id, name FROM brands),
-     product_brands AS (SELECT brand, COUNT(*) AS rec_cnt
-                        FROM staging.tests_daily_data_pp
-                        WHERE brand != ''
-                        GROUP BY brand),
-     product_brands_unmatched AS (SELECT product_brands.brand
-                                  FROM product_brands
-                                           LEFT OUTER JOIN brands ON (brands.name = brand)
-                                  WHERE brands.id IS NULL),
-     prod_brand_possible_match AS (SELECT umbrands.brand, STRING_AGG(brands.name, ',') AS similar_brands
-                                   FROM product_brands_unmatched umbrands
-                                            JOIN brands ON LOWER(umbrands.brand) != LOWER(brands.name) AND
-                                                           umbrands.brand % brands.name
-                                   GROUP BY brand)
-SELECT *
-FROM prod_brand_possible_match
-         INNER JOIN product_brands USING (brand)
-ORDER BY rec_cnt DESC;
 
 WITH data_comp AS (SELECT id,
                           name
@@ -427,154 +757,4 @@ FROM data_comp a
                         --AND a.name % b.name
                         AND a.name LIKE b.name || '%'
 GROUP BY a.name;
-
-
-WITH tmp_product_pp AS (SELECT * FROM staging.tmp_product_pp WHERE "sourceId" IN ('153792', '382203')),
-     ret_promo AS (SELECT id AS "retailerPromotionId",
-                          "retailerId",
-                          "promotionMechanicId",
-                          regexp,
-                          "promotionMechanicName"
-                   FROM "retailerPromotions"
-                            INNER JOIN (SELECT id   AS "promotionMechanicId",
-                                               name AS "promotionMechanicName"
-                                        FROM "promotionMechanics") AS "promotionMechanics"
-                                       USING ("promotionMechanicId")
-                   WHERE "retailerId" = 114)
-SELECT product."retailerId",
-       "sourceId",
-       promo_indx,
-
-       promo.description,
-       promo_desc_trsf.desc,
-       promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
-
-       LOWER(ret_promo."promotionMechanicName") =
-       COALESCE(promo.mechanic, ''),
-       ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0,
-       LENGTH(ret_promo.regexp) = 0                            AS len0,
-       ret_promo."promotionMechanicName" = 'Multibuy' AND
-       promo_desc_trsf.desc ~ '(\d+\/\d+)',
-       promo_desc_trsf.desc ~ ret_promo.regexp,
-
-       fn_to_float(promo."multibuyPrice")                      AS "multibuyPrice",
-       ret_promo."retailerPromotionId",
-       ret_promo.regexp,
-       ret_promo."promotionMechanicId",
-       ret_promo."promotionMechanicName",
-       ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx) AS rownum
-FROM tmp_product_pp AS product
-         CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
-                                                                        "retailerPromotionId",
-                                                                        "startDate",
-                                                                        "endDate",
-                                                                        description,
-                                                                        mechanic,
-                                                                        "multibuyPrice",
-                                                                        promo_indx)
-         CROSS JOIN LATERAL (
-    SELECT LOWER(multi_replace(promo.description,
-                               'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
-                               '5',
-                               'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
-                               '10',
-                               ',', '')) AS desc
-    ) AS promo_desc_trsf
-         LEFT OUTER JOIN ret_promo
-                         ON (product."retailerId" = ret_promo."retailerId" AND
-                             CASE
-                                 WHEN LOWER(ret_promo."promotionMechanicName") =
-                                      COALESCE(promo.mechanic, '') THEN TRUE
-                                 WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
-                                     THEN FALSE
-                                 WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
-                                      promo_desc_trsf.desc ~ '(\d+\/\d+)'
-                                     THEN FALSE
-                                 ELSE
-                                     promo_desc_trsf.desc ~ ret_promo.regexp
-                                 END
-                             )
-;
-
-SELECT DISTINCT "sourceId",
-                promo_type,
-                promo_description,
-                multibuy_price,
-                promo_args.*,
-                calculated_multibuy_price
-FROM staging.tests_daily_data_pp
-         CROSS JOIN LATERAL UNNEST("promoData") AS promo
-         CROSS JOIN LATERAL REGEXP_MATCH(promo_description, '.*(\d+) FOR ([£$€]{0,1})(\d+[\.\d]*).*',
-                                         'i') AS promo_regex
-         CROSS JOIN LATERAL (SELECT promo_regex[1]::integer           AS promo_quantity,
-                                    promo_regex[2]                    AS promo_currency,
-                                    promo_regex[3]::float             AS promo_total,
-                                    "wasPrice",
-                                    "shelfPrice",
-                                    COALESCE(
-                                            "wasPrice", "shelfPrice") AS "productPrice") AS promo_args
-         CROSS JOIN LATERAL (SELECT ROUND(
-                                            (CASE
-                                                 WHEN promo_currency = ''
-                                                     THEN "productPrice" * promo_total
-                                                 ELSE promo_total END / promo_quantity)::numeric,
-                                            2) AS calculated_multibuy_price) AS calcs
-WHERE promo_type = 'multibuy'
-  AND calculated_multibuy_price != multibuy_price::float;
-
-
-WHERE promo_description IN ('ANY 2 FOR £2.60',
-                            'BUY 2 FOR £1.50',
-                            'BUY 3 FOR £4.50',
-                            'BUY ANY 2 FOR £1.50',
-                            'BUY ANY 2 FOR £2.50',
-                            'BUY ANY 2 FOR £3.25',
-                            'BUY ANY 2 FOR £3.50',
-                            'BUY ANY 3 FOR £1.20',
-                            'BUY ANY 3 FOR £4.50');
-
-
-
-SELECT "retailerId",
-       "sourceId",
-       "promotionDescription",
-       "productPrice",
-
-       "originalPrice",
-       "promotedPrice",
-
-
-       "basePrice",
-       "shelfPrice",
-       "cardPrice",
-       promo.*
-FROM staging.tmp_product_pp
-         CROSS JOIN LATERAL UNNEST(promotions) AS promo
-WHERE "sourceId" IN ('153792', '382203');
---WHERE multibuy;
-
-WITH ret_promo AS (SELECT id AS "retailerPromotionId",
-                          "retailerId",
-                          "promotionMechanicId",
-                          regexp,
-                          "promotionMechanicName"
-                   FROM "retailerPromotions"
-                            INNER JOIN (SELECT id   AS "promotionMechanicId",
-                                               name AS "promotionMechanicName"
-                                        FROM "promotionMechanics") AS "promotionMechanics"
-                                       USING ("promotionMechanicId"))
-SELECT *
-FROM ret_promo
-WHERE "retailerId" = 114;
-
-
-SELECT *, LENGTH(regexp)
-FROM "retailerPromotions"
-WHERE "retailerId" = 114;
-
-
-UPDATE "retailerPromotions"
-SET regexp=''
-WHERE "retailerId" = 114;
-
 

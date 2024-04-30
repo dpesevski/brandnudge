@@ -78,33 +78,44 @@ CREATE TYPE staging.t_promotion_pp AS
 DROP TYPE IF EXISTS staging.retailer_data_pp;
 CREATE TYPE staging.retailer_data_pp AS
 (
-    DATE          DATE,
-    retailer      TEXT,
-    "countryCode" TEXT,
-    "currency"    TEXT,
+    DATE                DATE,
+    retailer            TEXT,
+    "countryCode"       TEXT,
+    "currency"          TEXT,
 
-    "sourceId"    TEXT,
-
-
-    ean           TEXT,
-
-    "brand"       TEXT,
-    "title"       TEXT,
-
-    "shelfPrice"  TEXT,--double precision,
-    "wasPrice"    TEXT,--double precision,
-    "cardPrice"   TEXT,--double precision,
-    "inStock"     TEXT,--boolean,
-    "onPromo"     TEXT,--boolean,
-
-    "promoData"   staging.t_promotion_pp[],
-
-    "skuURL"      TEXT,
-    "imageURL"    TEXT,
+    "sourceId"          TEXT,
 
 
-    "bundled"     TEXT,--boolean,
-    "masterSku"   TEXT--boolean
+    ean                 TEXT,
+
+    "brand"             TEXT,
+    "title"             TEXT,
+
+    "shelfPrice"        TEXT,--double precision,
+    "wasPrice"          TEXT,--double precision,
+    "cardPrice"         TEXT,--double precision,
+    "inStock"           TEXT,--boolean,
+    "onPromo"           TEXT,--boolean,
+
+    "promoData"         staging.t_promotion_pp[],
+
+    "skuURL"            TEXT,
+    "imageURL"          TEXT,
+
+
+    "bundled"           TEXT,--boolean,
+    "masterSku"         TEXT,--boolean
+    shop                text,
+    "amazonShop"        text,
+    choice              text,
+    "amazonChoice"      text,
+    "lowStock"          boolean,
+    "sellParty"         text,
+    "amazonSellParty"   text,
+    sell                text,
+    "fulfilParty"       text,
+    "amazonFulfilParty" text,
+    "amazonSell"        text
 );
 
 SET WORK_MEM = ' 2097151';

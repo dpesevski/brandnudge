@@ -794,6 +794,11 @@ TO DO
                                   lat_dates."startDate",
                                   lat_dates."endDate",
 
+                                  "promotedPrice",
+                                  "shelfPrice",
+                                  "productPrice",
+                                  "sourceType",
+
                                   lat_promo_id."promoId",
                                   promo.description,
                                   promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
@@ -850,44 +855,59 @@ TO DO
                                                                 promo_desc_trsf.desc ~ ret_promo.regexp
                                                             END
                                                         )),
+         promo_price_calc AS (SELECT "sourceId",
+                                     description,
+                                     "promoId",
+                                     "retailerPromotionId",
+                                     "startDate",
+                                     "endDate",
+                                     "promotionMechanicName",
+                                     promo_indx,
+                                     price_calc."promotedPrice",
+                                     price_calc."shelfPrice",
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "sourceId" ORDER BY price_calc."promotedPrice" ) AS promo_price_order
+                              FROM product_promo
+                                       CROSS JOIN LATERAL (SELECT CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy'
+                                                                          THEN staging.calculateMultibuyPrice(
+                                                                              description,
+                                                                              "promotedPrice")
+                                                                      ELSE
+                                                                          "productPrice"
+                                                                      END AS "promotedPrice",
+                                                                  CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy'
+                                                                          THEN "shelfPrice"
+                                                                      WHEN NOT (
+                                                                          "sourceType" = 'tesco' AND
+                                                                          LOWER(description) ~
+                                                                          'clubcard price')
+                                                                          THEN
+                                                                          "productPrice"
+                                                                      ELSE
+                                                                          "shelfPrice"
+                                                                      END AS "shelfPrice") AS price_calc
+                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+         ),
          upd_product_promo AS (SELECT "sourceId",
-                                      MAX(description) FILTER (WHERE "promotionMechanicName" = 'Multibuy') AS Multibuy_description,
-                                      MAX(description)
-                                      FILTER (WHERE LOWER("promotionMechanicName") ~ 'clubcard price')     AS tescoClubcardPromo_description,
+                                      MAX("promotedPrice") FILTER (WHERE promo_price_order = 1) AS "promotedPrice",
+                                      MAX("shelfPrice") FILTER (WHERE promo_price_order = 1)    AS "shelfPrice",
                                       ARRAY_AGG(("promoId",
                                                  "retailerPromotionId",
                                                  "startDate",
                                                  "endDate",
                                                  description,
                                                  "promotionMechanicName")::staging.t_promotion
-                                                ORDER BY promo_indx)                                       AS promotions
-                               FROM product_promo
-                               WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+                                                ORDER BY promo_indx)                            AS promotions
+                               FROM promo_price_calc
                                GROUP BY 1)
     UPDATE staging.tmp_product
-    SET promotions=upd_product_promo.promotions,
-        "promotedPrice" = CASE
-                              WHEN upd_product_promo.Multibuy_description IS NOT NULL
-                                  THEN staging.calculateMultibuyPrice(upd_product_promo.Multibuy_description,
-                                                                      all_products."promotedPrice")
-                              WHEN upd_product_promo."sourceId" IS NOT NULL THEN all_products."productPrice"
-                              ELSE
-                                  all_products."promotedPrice"
-            END,
-        "shelfPrice"= CASE
-                          WHEN upd_product_promo.Multibuy_description IS NOT NULL
-                              THEN all_products."shelfPrice"
-                          WHEN NOT (all_products."sourceType" = 'tesco' AND
-                                    upd_product_promo.tescoClubcardPromo_description IS NOT NULL)
-                              THEN
-                              all_products."productPrice"
-                          ELSE
-                              all_products."shelfPrice"
-            END
-    FROM staging.tmp_product AS all_products
-             LEFT OUTER JOIN upd_product_promo
-                             ON all_products."sourceId" = upd_product_promo."sourceId"
-    WHERE tmp_product."sourceId" = all_products."sourceId";
+    SET promotions      = upd_product_promo.promotions,
+        "promotedPrice" = upd_product_promo."promotedPrice",
+        "shelfPrice"    = upd_product_promo."shelfPrice"
+    FROM upd_product_promo
+    WHERE tmp_product."sourceId" = upd_product_promo."sourceId";
 
 
     /*  create the new coreProduct   */
@@ -1266,7 +1286,7 @@ TO DO
            "promoId"
     FROM staging.tmp_product
              CROSS JOIN LATERAL UNNEST(promotions) AS promo
-    ON CONFLICT ("productId", "retailerPromotionId")
+    ON CONFLICT ("productId", "promoId")
     WHERE "createdAt" >= '2024-04-17'
         DO
     UPDATE
@@ -1345,10 +1365,20 @@ FROM "productsData" USING products
 WHERE "productId" = products.id
   AND products."createdAt" >= '2024-04-17';
 
-SELECT staging.load_retailer_data(fetched_data)
-FROM staging.retailer_daily_data;
 
 */
+
+SELECT staging.load_retailer_data(fetched_data)
+FROM staging.retailer_daily_data
+WHERE flag = 'create-products'
+-- AND created_at = '2024-04-16 08:00:00.878527+00'
+LIMIT 1 OFFSET 2;
+
+
+SELECT "sourceId", promotions, *
+FROM staging.tmp_product
+where array_length(promotions,1)>1;
+WHERE "sourceId" = '2515540';
 
 
 SELECT retailer,
@@ -1382,9 +1412,7 @@ FROM tests_daily_data
          INNER JOIN prod USING ("sourceId")
 ORDER BY "sourceId";
 
-SELECT "sourceId", promotions, *
-FROM staging.tmp_product
-WHERE "sourceId" = '2515540';
+
 
 
 
