@@ -1180,9 +1180,6 @@ TO DO
       AND tmp_product."retailerId" = ins_products."retailerId"
       AND tmp_product."dateId" = ins_products."dateId";
 
-    INSERT INTO staging.debug_tmp_product
-    SELECT debug_test_run_id, *
-    FROM tmp_product;
 
     /*  createProductsData  */
     /*
@@ -1446,6 +1443,14 @@ TO DO
     FROM debug_ins_coreProductSourceCategories;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
+    INSERT INTO staging.debug_tmp_product
+    SELECT debug_test_run_id, *
+    FROM tmp_product;
+
+    INSERT INTO staging.debug_tmp_daily_data
+    SELECT debug_test_run_id, *
+    FROM tmp_daily_data;
+
     RETURN;
 END ;
 
@@ -1493,27 +1498,27 @@ WHERE ean = 'B073HBTHC6';
 
 SELECT *
 FROM staging.debug_productsData
-WHERE "productId" = 196476664;
+WHERE "productId" = 196480506;
 
 SELECT *
 FROM staging.debug_aggregatedproducts
-WHERE "productId" = 196476664;
+WHERE "productId" = 196480506;
 
 
 SELECT *
 FROM staging.debug_amazonproducts
-WHERE "productId" = 196476664;
+WHERE "productId" = 196480506;
 
 SELECT *
 FROM staging.debug_promotions
-WHERE "productId" = 196476664;
+WHERE "productId" = 196480506;
 
 SELECT *
 FROM staging.debug_coreretailers
-WHERE "productId" = 196476664::text;
+WHERE "productId" = 196480506::text;
 SELECT *
 FROM staging.debug_productstatuses
-WHERE "productId" = 196476664;
+WHERE "productId" = 196480506;
 
 SELECT *
 FROM staging.debug_coreproducts
@@ -1528,30 +1533,23 @@ FROM staging.debug_coreproductbarcodes
 WHERE "coreProductId" = 60445;
 
 
+
+SELECT *
+FROM staging.debug_coreProductSourceCategories
+WHERE "coreProductId" = 60445;
+
+
 SELECT *
 FROM staging.debug_coreretailers
 WHERE "coreProductId" = 60445;
 
 SELECT *
 FROM staging.debug_coreretailerdates
-WHERE "coreRetailerId" = 921791;
+WHERE "coreRetailerId" = 925633;
 
 SELECT *
 FROM staging.debug_coreRetailerTaxonomies
-WHERE "coreRetailerId" = 921791;
-SELECT *
-FROM staging.debug_coreProductSourceCategories
-WHERE "coreProductId" = 60445;
-
-
-
-
-
-
-
-
-
-
+WHERE "coreRetailerId" = 925633;
 
 
 
