@@ -500,8 +500,8 @@ BEGIN
 END;
 $$;
 
---DROP FUNCTION IF EXISTS staging.load_retailer_data(jsonb);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json) RETURNS void
+DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -511,13 +511,13 @@ DECLARE
     dd_sourceCategoryType text;
     dd_date_id            integer;
     dd_retailer           retailers;
+    debug_test_run_id     integer;
 BEGIN
     /*
     INSERT INTO staging.retailer_daily_data (fetched_data)
     VALUES (value);
     */
-    DROP TABLE IF EXISTS staging.tmp_daily_data;
-    CREATE TABLE staging.tmp_daily_data AS
+    CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
     SELECT product.retailer,
            ean,
            product.date,
@@ -573,15 +573,15 @@ BEGIN
                                  value) AS product;
     /* value -> 'products' */
     --RETURN;
+
     SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END
     INTO dd_date, dd_source_type, dd_sourceCategoryType
-    FROM staging.tmp_daily_data
+    FROM tmp_daily_data
     LIMIT 1;
 
     /*  ProductService.getCreateProductCommonData  */
     /*  dates.findOrCreate  */
     /*  TO DO:  add UQ constraint on date   */
-
 
     INSERT INTO dates (date)
     VALUES (dd_date AT TIME ZONE 'UTC')
@@ -598,20 +598,41 @@ BEGIN
         INSERT INTO retailers (name, "countryId") VALUES (dd_source_type, 1) RETURNING * INTO dd_retailer; /*   1-GB */
     END IF;
 
+    INSERT INTO staging.debug_test_run(data,
+                                       flag,
+                                       dd_date,
+                                       dd_retailer,
+                                       dd_date_id,
+                                       dd_source_type,
+                                       dd_sourceCategoryType)
+    SELECT value,
+           flag,
+           dd_date,
+           dd_retailer,
+           dd_date_id,
+           dd_source_type,
+           dd_sourceCategoryType
+    RETURNING id INTO debug_test_run_id;
+
     /*  create the new categories   */
     WITH product_categ AS (SELECT DISTINCT category              AS name,
                                            dd_sourceCategoryType AS type
-                           FROM staging.tmp_daily_data)
+                           FROM tmp_daily_data),
+         debug_ins_sourceCategories AS (INSERT
+             INTO "sourceCategories" (name, type, "createdAt", "updatedAt")
+                 SELECT name, type, NOW(), NOW()
+                 FROM product_categ
+                          LEFT OUTER JOIN "sourceCategories"
+                                          USING (name, type)
+                 WHERE "sourceCategories".id IS NULL
+                 RETURNING "sourceCategories".*)
     INSERT
-    INTO "sourceCategories"(name, type, "createdAt", "updatedAt")
-    SELECT name, type, NOW(), NOW()
-    FROM product_categ
-             LEFT OUTER JOIN "sourceCategories"
-                             USING (name, type)
-    WHERE "sourceCategories".id IS NULL;
+    INTO staging.debug_sourceCategories
+    SELECT debug_test_run_id, *
+    FROM debug_ins_sourceCategories;
 
-    DROP TABLE IF EXISTS staging.tmp_product;
-    CREATE TABLE staging.tmp_product AS
+
+    CREATE TEMPORARY TABLE tmp_product ON COMMIT DROP AS
     WITH prod_categ AS (SELECT id AS "sourceCategoryId", name AS category
                         FROM "sourceCategories"
                         WHERE type = dd_sourceCategoryType),
@@ -691,7 +712,7 @@ TO DO
     }
 
 */
-                        FROM staging.tmp_daily_data
+                        FROM tmp_daily_data
                                  INNER JOIN prod_categ USING (category)
                                  LEFT OUTER JOIN prod_brand USING ("productBrand")
                             /*  CompareUtil.checkEAN    */
@@ -772,7 +793,7 @@ TO DO
              INNER JOIN ranking USING ("sourceId")
     WHERE rownum = 1;
 
-    UPDATE staging.tmp_product
+    UPDATE tmp_product
     SET status='re-listed'
     WHERE status = 'newly'
       AND NOT EXISTS (SELECT * FROM products WHERE "sourceId" = tmp_product."sourceId");
@@ -814,7 +835,7 @@ TO DO
                                           ret_promo."promotionMechanicName",
                                           default_ret_promo."promotionMechanicName")      AS "promotionMechanicName",
                                   ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx) AS rownum
-                           FROM staging.tmp_product AS product
+                           FROM tmp_product AS product
                                     CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
                                                                                                    "retailerPromotionId",
                                                                                                    "startDate",
@@ -903,7 +924,7 @@ TO DO
                                                 ORDER BY promo_indx)                            AS promotions
                                FROM promo_price_calc
                                GROUP BY 1)
-    UPDATE staging.tmp_product
+    UPDATE tmp_product
     SET promotions      = upd_product_promo.promotions,
         "promotedPrice" = upd_product_promo."promotedPrice",
         "shelfPrice"    = upd_product_promo."shelfPrice"
@@ -944,7 +965,7 @@ TO DO
                                     nutritional                       AS specification,
                                     COALESCE("productOptions", FALSE) AS "productOptions",
                                     "eanIssues"
-                             FROM staging.tmp_product),
+                             FROM tmp_product),
          ins_coreProducts AS (
              INSERT
                  INTO "coreProducts" (ean,
@@ -990,7 +1011,11 @@ TO DO
                          SET disabled = FALSE,
                              "productOptions" = excluded."productOptions",
                              "updatedAt" = excluded."updatedAt"
-                     RETURNING *),
+                     RETURNING "coreProducts".*),
+         debug_ins_coreProducts AS (
+             INSERT INTO staging.debug_coreProducts
+                 SELECT debug_test_run_id, * FROM ins_coreProducts),
+
         /*  createProductCountryData    */
          ins_prod_country_data AS (INSERT INTO "coreProductCountryData" ("coreProductId",
                                                                          "countryId",
@@ -1028,7 +1053,11 @@ TO DO
              ON CONFLICT ("coreProductId", "countryId")
                  WHERE "createdAt" >= '2024-04-17'
                  DO UPDATE
-                     SET "updatedAt" = excluded."updatedAt"),
+                     SET "updatedAt" = excluded."updatedAt"
+             RETURNING "coreProductCountryData".*),
+         debug_ins_coreProductCountryData AS (
+             INSERT INTO staging.debug_coreProductCountryData
+                 SELECT debug_test_run_id, * FROM ins_prod_country_data),
          ins_coreProductBarcodes AS (
              INSERT
                  INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt")
@@ -1037,8 +1066,12 @@ TO DO
                      WHERE "updatedAt" >= NOW()::date
                      ON CONFLICT (barcode)
                          DO UPDATE
-                             SET "updatedAt" = excluded."updatedAt")
-    UPDATE staging.tmp_product
+                             SET "updatedAt" = excluded."updatedAt"
+                     RETURNING "coreProductBarcodes".*),
+         debug_ins_coreProductBarcodes AS (
+             INSERT INTO staging.debug_coreProductBarcodes
+                 SELECT debug_test_run_id, * FROM ins_coreProductBarcodes)
+    UPDATE tmp_product
     SET "coreProductId"=ins_coreProducts.id
     FROM ins_coreProducts
     WHERE tmp_product.ean = ins_coreProducts.ean;
@@ -1112,7 +1145,7 @@ TO DO
                    "productTitleDetail",
                    "sizeUnit",
                    "dateId"
-            FROM staging.tmp_product
+            FROM tmp_product
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
                                                         REPLACE(
@@ -1136,13 +1169,20 @@ TO DO
                 WHERE "createdAt" >= '2024-04-17'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
-            RETURNING products.*)
-    UPDATE staging.tmp_product
+            RETURNING products.*),
+         debug_ins_products AS (
+             INSERT INTO staging.debug_products
+                 SELECT debug_test_run_id, * FROM ins_products)
+    UPDATE tmp_product
     SET id=ins_products.id
     FROM ins_products
     WHERE tmp_product."sourceId" = ins_products."sourceId"
       AND tmp_product."retailerId" = ins_products."retailerId"
       AND tmp_product."dateId" = ins_products."dateId";
+
+    INSERT INTO staging.debug_tmp_product
+    SELECT debug_test_run_id, *
+    FROM tmp_product;
 
     /*  createProductsData  */
     /*
@@ -1151,60 +1191,69 @@ TO DO
         2. set UQ constrain in productsData on productId, category to keep only one ranking record for product/category per day.
             Current solution and also the provided data in the daily_retail_load contains multiple ranking records for a product/category per day.
     */
-    INSERT INTO "productsData" ("productId",
-                                category,
-                                "categoryType",
-                                "parentCategory",
-                                "productRank",
-                                "pageNumber",
-                                screenshot,
-                                "sourceCategoryId",
-                                featured,
-                                "featuredRank",
-                                "taxonomyId")
-    SELECT product.id AS "productId",
-           ranking.category,
-           ranking."categoryType",
-           ranking."parentCategory",
-           ranking."productRank",
-           ranking."pageNumber",
-           ranking.screenshot,
-           ranking."sourceCategoryId",
-           ranking.featured,
-           ranking."featuredRank",
-           ranking."taxonomyId"
-    FROM staging.tmp_product AS product
-             CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking;
+    WITH debug_ins_productsData AS ( INSERT INTO "productsData" ("productId",
+                                                                 category,
+                                                                 "categoryType",
+                                                                 "parentCategory",
+                                                                 "productRank",
+                                                                 "pageNumber",
+                                                                 screenshot,
+                                                                 "sourceCategoryId",
+                                                                 featured,
+                                                                 "featuredRank",
+                                                                 "taxonomyId")
+        SELECT product.id AS "productId",
+               ranking.category,
+               ranking."categoryType",
+               ranking."parentCategory",
+               ranking."productRank",
+               ranking."pageNumber",
+               ranking.screenshot,
+               ranking."sourceCategoryId",
+               ranking.featured,
+               ranking."featuredRank",
+               ranking."taxonomyId"
+        FROM tmp_product AS product
+                 CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
+        RETURNING "productsData".*)
+    INSERT
+    INTO staging.debug_productsdata
+    SELECT debug_test_run_id, *
+    FROM debug_ins_productsData;
 
     /*  createAmazonProduct */
     /*
        TO DO: set UQ constrain in amazonProducts on productId?.
      */
-    INSERT INTO "amazonProducts" ("productId",
-                                  shop,
-                                  choice,
-                                  "lowStock",
-                                  "sellParty",
-                                  sell,
-                                  "fulfilParty",
-                                  "createdAt",
-                                  "updatedAt")
-    SELECT id                                                                         AS "productId",
-           COALESCE(COALESCE(product."amazonShop", product.shop), '')                 AS shop,
-           COALESCE(COALESCE(product."amazonChoice", product.choice), '')             AS choice,
-           COALESCE(product."lowStock", FALSE)                                        AS "lowStock",
-           COALESCE(COALESCE(product."amazonSellParty", product."sellParty"), '')     AS "sellParty",
-           COALESCE(COALESCE(product."amazonSell", product."sell"), '')               AS "sell",
-           COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
-           NOW(),
-           NOW()
-    FROM staging.tmp_product AS product
-    WHERE LOWER("sourceType") LIKE '%amazon%';
+    WITH debug_ins_amz AS (INSERT INTO "amazonProducts" ("productId",
+                                                         shop,
+                                                         choice,
+                                                         "lowStock",
+                                                         "sellParty",
+                                                         sell,
+                                                         "fulfilParty",
+                                                         "createdAt",
+                                                         "updatedAt")
+        SELECT id                                                                         AS "productId",
+               COALESCE(COALESCE(product."amazonShop", product.shop), '')                 AS shop,
+               COALESCE(COALESCE(product."amazonChoice", product.choice), '')             AS choice,
+               COALESCE(product."lowStock", FALSE)                                        AS "lowStock",
+               COALESCE(COALESCE(product."amazonSellParty", product."sellParty"), '')     AS "sellParty",
+               COALESCE(COALESCE(product."amazonSell", product."sell"), '')               AS "sell",
+               COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
+               NOW(),
+               NOW()
+        FROM tmp_product AS product
+        WHERE LOWER("sourceType") LIKE '%amazon%'
+        RETURNING "amazonProducts".*)
+    INSERT
+    INTO staging.debug_amazonproducts
+    SELECT debug_test_run_id, *
+    FROM debug_ins_amz;
 
 
     /*  setCoreRetailer */
-    DROP TABLE IF EXISTS staging.tmp_coreRetailer;
-    CREATE TABLE staging.tmp_coreRetailer AS
+    CREATE TEMPORARY TABLE tmp_coreRetailer ON COMMIT DROP AS
     WITH ins_coreRetailers AS (
         INSERT INTO "coreRetailers" ("coreProductId",
                                      "retailerId",
@@ -1216,7 +1265,7 @@ TO DO
                    product.id AS "productId",
                    NOW()      AS "createdAt",
                    NOW()      AS "updatedAt"
-            FROM staging.tmp_product AS product
+            FROM tmp_product AS product
             ON CONFLICT ("coreProductId",
                 "retailerId",
                 "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
@@ -1229,131 +1278,172 @@ TO DO
            "updatedAt"
     FROM ins_coreRetailers;
 
+    INSERT
+    INTO staging.debug_coreRetailers
+    SELECT debug_test_run_id, *
+    FROM tmp_coreRetailer;
+
     /*  setCoreRetailerTaxonomy */
     /*  nodejs code interpreted as insert in coreRetailerTaxonomies only if the given taxonomyId already exists in retailerTaxonomies */
-    INSERT INTO "coreRetailerTaxonomies" ("coreRetailerId",
-                                          "retailerTaxonomyId",
-                                          "createdAt",
-                                          "updatedAt")
-    SELECT tmp_coreRetailer.id AS "coreRetailerId",
-           "taxonomyId"        AS "retailerTaxonomyId",
-           NOW(),
-           NOW()
-    FROM staging.tmp_coreRetailer
-             INNER JOIN (SELECT DISTINCT tmp_product.id AS "productId",
-                                         ranking."taxonomyId"
-                         FROM staging.tmp_product
-                                  CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking) AS product
-                        USING ("productId")
-             INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
-    ON CONFLICT ("coreRetailerId",
-        "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-04-17'
-        DO NOTHING;
+    WITH debug_coreRetailerTaxonomies AS ( INSERT INTO "coreRetailerTaxonomies" ("coreRetailerId",
+                                                                                 "retailerTaxonomyId",
+                                                                                 "createdAt",
+                                                                                 "updatedAt")
+        SELECT tmp_coreRetailer.id AS "coreRetailerId",
+               "taxonomyId"        AS "retailerTaxonomyId",
+               NOW(),
+               NOW()
+        FROM tmp_coreRetailer
+                 INNER JOIN (SELECT DISTINCT tmp_product.id AS "productId",
+                                             ranking."taxonomyId"
+                             FROM tmp_product
+                                      CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking) AS product
+                            USING ("productId")
+                 INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
+        ON CONFLICT ("coreRetailerId",
+            "retailerTaxonomyId")
+            WHERE "createdAt" >= '2024-04-17'
+            DO NOTHING
+        RETURNING "coreRetailerTaxonomies".*)
+    INSERT
+    INTO staging.debug_coreretailertaxonomies
+    SELECT debug_test_run_id, *
+    FROM debug_coreRetailerTaxonomies;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     /*  saveProductStatus   */
-    INSERT INTO "productStatuses" ("productId",
-                                   status,
-                                   screenshot,
-                                   "createdAt",
-                                   "updatedAt")
-    SELECT id AS "productId",
-           status,
-           screenshot,
-           NOW(),
-           NOW()
-    FROM staging.tmp_product
-    ON CONFLICT ("productId")
-        DO NOTHING;
+    WITH debug_productStatuses AS (INSERT INTO "productStatuses" ("productId",
+                                                                  status,
+                                                                  screenshot,
+                                                                  "createdAt",
+                                                                  "updatedAt")
+        SELECT id AS "productId",
+               status,
+               screenshot,
+               NOW(),
+               NOW()
+        FROM tmp_product
+        ON CONFLICT ("productId")
+            DO NOTHING
+        RETURNING "productStatuses".*)
+    INSERT
+    INTO staging.debug_productStatuses
+    SELECT debug_test_run_id, *
+    FROM debug_productStatuses;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     /*  PromotionService.processProductPromotions, part 2 insert promotions  */
-    INSERT INTO promotions ("retailerPromotionId",
-                            "productId",
-                            description,
-                            "startDate",
-                            "endDate",
-                            "createdAt",
-                            "updatedAt",
-                            "promoId")
-    SELECT "retailerPromotionId",
-           id    AS "productId",
-           description,
-           "startDate",
-           "endDate",
-           NOW() AS "createdAt",
-           NOW() AS "updatedAt",
-           "promoId"
-    FROM staging.tmp_product
-             CROSS JOIN LATERAL UNNEST(promotions) AS promo
-    ON CONFLICT ("productId", "promoId")
-    WHERE "createdAt" >= '2024-04-17'
-        DO
-    UPDATE
-    SET "startDate"=LEAST(promotions."startDate", excluded."startDate"),
-        "endDate"=GREATEST(promotions."endDate", excluded."endDate"),
-        "updatedAt" = excluded."updatedAt";
+    WITH debug_ins_promotions AS (
+        INSERT INTO promotions ("retailerPromotionId",
+                                "productId",
+                                description,
+                                "startDate",
+                                "endDate",
+                                "createdAt",
+                                "updatedAt",
+                                "promoId")
+            SELECT "retailerPromotionId",
+                   id    AS "productId",
+                   description,
+                   "startDate",
+                   "endDate",
+                   NOW() AS "createdAt",
+                   NOW() AS "updatedAt",
+                   "promoId"
+            FROM tmp_product
+                     CROSS JOIN LATERAL UNNEST(promotions) AS promo
+            ON CONFLICT ("productId", "promoId")
+                WHERE "createdAt" >= '2024-04-17'
+                DO
+                    UPDATE
+                    SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
+                        "endDate" = GREATEST(promotions."endDate", excluded."endDate"),
+                        "updatedAt" = excluded."updatedAt"
+            RETURNING promotions.*)
+    INSERT
+    INTO staging.debug_promotions
+    SELECT debug_test_run_id, *
+    FROM debug_ins_promotions;
 
     /*  aggregatedProducts  */
-    INSERT INTO "aggregatedProducts" ("titleMatch",
-                                      "productId",
-                                      "createdAt",
-                                      "updatedAt"
-        /*
-        TO DO:
-        Handle the rest of the "match" scores:
-            features,
-            specification,
-            size,
-            description,
-            ingredients,
-            "imageMatch"
-         */
-    )
-    SELECT staging.compareTwoStrings("titleParent", "productTitle") AS "titleMatch",
-           id                                                       AS "productId",
-           NOW()                                                    AS "createdAt",
-           NOW()                                                       "updatedAt"
-    FROM staging.tmp_product
-             INNER JOIN (SELECT "coreProductId", title AS "titleParent"
-                         FROM "coreProductCountryData"
-                         WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData USING ("coreProductId")
-    ON CONFLICT ("productId")
-    WHERE "createdAt" >= '2024-04-17'
-        DO NOTHING;
+    WITH debug_ins_aggregatedProducts AS (
+        INSERT INTO "aggregatedProducts" ("titleMatch",
+                                          "productId",
+                                          "createdAt",
+                                          "updatedAt"
+            /*
+            TO DO:
+            Handle the rest of the "match" scores:
+                features,
+                specification,
+                size,
+                description,
+                ingredients,
+                "imageMatch"
+             */
+            )
+            SELECT staging.compareTwoStrings("titleParent", "productTitle") AS "titleMatch",
+                   id                                                       AS "productId",
+                   NOW()                                                    AS "createdAt",
+                   NOW()                                                       "updatedAt"
+            FROM tmp_product
+                     INNER JOIN (SELECT "coreProductId", title AS "titleParent"
+                                 FROM "coreProductCountryData"
+                                 WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
+                                USING ("coreProductId")
+            ON CONFLICT ("productId")
+                WHERE "createdAt" >= '2024-04-17'
+                DO NOTHING
+            RETURNING "aggregatedProducts".*)
+    INSERT
+    INTO staging.debug_aggregatedProducts
+    SELECT debug_test_run_id, *
+    FROM debug_ins_aggregatedProducts;
+
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     /*  coreRetailerDates */
-    INSERT INTO "coreRetailerDates" ("coreRetailerId",
-                                     "dateId",
-                                     "createdAt",
-                                     "updatedAt")
-    SELECT tmp_coreRetailer.id AS "coreRetailerId",
-           dd_date_id          AS "dateId",
-           NOW(),
-           NOW()
-    FROM staging.tmp_coreRetailer
-    ON CONFLICT ("coreRetailerId",
-        "dateId")
-        DO NOTHING;
+    WITH debug_ins_coreRetailerDates AS (
+        INSERT INTO "coreRetailerDates" ("coreRetailerId",
+                                         "dateId",
+                                         "createdAt",
+                                         "updatedAt")
+            SELECT tmp_coreRetailer.id AS "coreRetailerId",
+                   dd_date_id          AS "dateId",
+                   NOW(),
+                   NOW()
+            FROM tmp_coreRetailer
+            ON CONFLICT ("coreRetailerId",
+                "dateId")
+                DO NOTHING
+            RETURNING "coreRetailerDates".*)
+    INSERT
+    INTO staging.debug_coreRetailerDates
+    SELECT debug_test_run_id, *
+    FROM debug_ins_coreRetailerDates;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
 
     /*  coreProductSourceCategory   */
-    INSERT INTO "coreProductSourceCategories" ("coreProductId",
-                                               "sourceCategoryId",
-                                               "createdAt",
-                                               "updatedAt")
-    SELECT DISTINCT tmp_product."coreProductId",
-                    ranking."sourceCategoryId",
-                    NOW(),
-                    NOW()
-    FROM staging.tmp_product
-             CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
-    ON CONFLICT ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-04-17'
-        DO NOTHING;
+    WITH debug_ins_coreProductSourceCategories AS (
+        INSERT INTO "coreProductSourceCategories" ("coreProductId",
+                                                   "sourceCategoryId",
+                                                   "createdAt",
+                                                   "updatedAt")
+            SELECT DISTINCT tmp_product."coreProductId",
+                            ranking."sourceCategoryId",
+                            NOW(),
+                            NOW()
+            FROM tmp_product
+                     CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
+            ON CONFLICT ("coreProductId", "sourceCategoryId")
+                WHERE "createdAt" >= '2024-04-17'
+                DO NOTHING
+            RETURNING "coreProductSourceCategories".*)
+    INSERT
+    INTO staging.debug_coreProductSourceCategories
+    SELECT debug_test_run_id, *
+    FROM debug_ins_coreProductSourceCategories;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     RETURN;
@@ -1369,11 +1459,100 @@ WHERE "productId" = products.id
 
 */
 
+SELECT created_at
+FROM staging.retailer_daily_data
+WHERE flag = 'create-products';
+
 SELECT staging.load_retailer_data(fetched_data)
 FROM staging.retailer_daily_data
 WHERE flag = 'create-products'
--- AND created_at = '2024-04-16 08:00:00.878527+00'
-LIMIT 1 OFFSET 2;
+  AND created_at = '2024-04-16 07:00:01.135625 +00:00';
+
+
+
+SELECT COUNT(*)
+FROM staging.debug_products;
+SELECT COUNT(*)
+FROM staging.debug_tmp_product
+WHERE id IS NOT NULL;
+
+SELECT *
+FROM staging.debug_retailers;
+SELECT *
+FROM staging.debug_sourceCategories;
+
+
+SELECT *
+FROM staging.debug_tmp_product
+WHERE ean = 'B073HBTHC6';
+
+
+SELECT *
+FROM staging.debug_products
+WHERE ean = 'B073HBTHC6';
+
+SELECT *
+FROM staging.debug_productsData
+WHERE "productId" = 196476664;
+
+SELECT *
+FROM staging.debug_aggregatedproducts
+WHERE "productId" = 196476664;
+
+
+SELECT *
+FROM staging.debug_amazonproducts
+WHERE "productId" = 196476664;
+
+SELECT *
+FROM staging.debug_promotions
+WHERE "productId" = 196476664;
+
+SELECT *
+FROM staging.debug_coreretailers
+WHERE "productId" = 196476664::text;
+SELECT *
+FROM staging.debug_productstatuses
+WHERE "productId" = 196476664;
+
+SELECT *
+FROM staging.debug_coreproducts
+WHERE id = 60445;
+
+SELECT *
+FROM staging.debug_coreproductcountrydata
+WHERE "coreProductId" = 60445;
+
+SELECT *
+FROM staging.debug_coreproductbarcodes
+WHERE "coreProductId" = 60445;
+
+
+SELECT *
+FROM staging.debug_coreretailers
+WHERE "coreProductId" = 60445;
+
+SELECT *
+FROM staging.debug_coreretailerdates
+WHERE "coreRetailerId" = 921791;
+
+SELECT *
+FROM staging.debug_coreRetailerTaxonomies
+WHERE "coreRetailerId" = 921791;
+SELECT *
+FROM staging.debug_coreProductSourceCategories
+WHERE "coreProductId" = 60445;
+
+
+
+
+
+
+
+
+
+
+
 
 
 SELECT "sourceId", promotions, *
