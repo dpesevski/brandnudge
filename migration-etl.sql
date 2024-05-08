@@ -1,5 +1,4 @@
---CREATE EXTENSION plv8;
-
+DROP SCHEMA IF EXISTS staging CASCADE;
 CREATE SCHEMA staging;
 
 DROP TYPE IF EXISTS staging.t_promotion CASCADE;
@@ -1369,177 +1368,6 @@ BEGIN
 END ;
 $$;
 
-
-
-CREATE OR REPLACE FUNCTION fn_to_float(value text) RETURNS double precision
-    LANGUAGE plpgsql
-AS
-$$
-BEGIN
-    BEGIN
-        RETURN value::float;
-    EXCEPTION
-        WHEN OTHERS THEN
-            RETURN NULL;
-    END;
-END;
-$$;
-
-DROP FUNCTION IF EXISTS staging.compareTwoStrings(text, text);
-CREATE OR REPLACE FUNCTION staging.compareTwoStrings(title1 text, title2 text) RETURNS float
-    LANGUAGE plv8
-AS
-$$
- const first = title1.replace(/\s+/g, '');
-    const second = title2.replace(/\s+/g, '');
-
-    if (!first.length && !second.length) return 1;
-    if (!first.length || !second.length) return 0;
-    if (first === second) return 1;
-    if (first.length === 1 && second.length === 1) return 0;
-    if (first.length < 2 || second.length < 2) return 0;
-
-    const firstBigrams = new Map();
-    for (let i = 0; i < first.length - 1; i += 1) {
-      const bigram = first.substr(i, 2);
-      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) + 1 : 1;
-
-      firstBigrams.set(bigram, count);
-    }
-    let intersectionSize = 0;
-    for (let i = 0; i < second.length - 1; i += 1) {
-      const bigram = second.substr(i, 2);
-      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) : 0;
-
-      if (count > 0) {
-        firstBigrams.set(bigram, count - 1);
-        intersectionSize += 1;
-      }
-    }
-    return (2.0 * intersectionSize) / (first.length + second.length - 2);
-$$;
-
-DROP FUNCTION IF EXISTS staging.calculateMultibuyPrice(text, float);
-CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS float
-    LANGUAGE plv8
-AS
-$$
-function textToNumber(str) {
-  const numMap = {
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10,
-  };
-
-  return Object.keys(numMap).reduce(
-    (res, text) => res.replace(new RegExp(text, 'gi'), numMap[text]),
-    str,
-  );
-}
-
-function numPrice(price) {
-  if (!price) return 1;
-  if (!isNaN(price)) return price;
-  if (price.includes('£')) return parseFloat(price.split('£')[1]).toFixed(2);
-  else if (price.includes('p'))
-    return parseFloat(price.split('p')[0] / 100).toFixed(2);
-  return price;
-}
- if (!description || !price) return price;
-    let result = price;
-    const desc = textToNumber(description.replace(',', '').toLowerCase());
-
-    const isFloat = n => Number(n) === n && n % 1 !== 0;
-
-    const countAndPrice = desc.match(/£?(\d+(.\d{1,2})?|\d+\/\d+)p?/g);
-    if (!countAndPrice || !countAndPrice.length) return price;
-
-    const [count, discountPrice = '£1'] = countAndPrice;
-    const dp = numPrice(discountPrice);
-    let sum = price * count;
-
-    // "3 for 2" match
-    const forMatch = desc.match(/(\d+) for (\d+)/i);
-
-    if (forMatch) {
-      // eslint-disable-next-line no-unused-vars
-      const [match, totalCount, forCount] = forMatch;
-      sum = price * forCount;
-      result = sum / totalCount;
-    } else if (desc.includes('save')) {
-      const isPercent = desc.includes('%');
-      const halfPrice = desc.includes('half price');
-      // eslint-disable-next-line no-nested-ternary
-      const discount = isPercent ? (sum / 100) * dp : halfPrice ? sum / 2 : dp;
-      result = (sum - discount) / count;
-    } else if (desc.includes('price of')) {
-      result = (price * dp) / count;
-    } else if (desc.includes('free')) {
-      const freeCount = dp > count ? 1 : +dp;
-      result = sum / (+count + freeCount);
-    } else if (desc.includes('half price')) {
-      sum += (price / 2) * dp;
-      result = sum / (+count + +dp);
-    } else {
-      result = Math.round((dp * 100.0) / count) / 100;
-    }
-
-    result = isFloat(result) ? result.toFixed(2) : result;
-
-    return result.toString();
-$$;
-
-
-
-/*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
-CREATE UNIQUE INDEX coreProductCountryData_coreProductId_countryId_key
-    ON "coreProductCountryData" ("coreProductId", "countryId")
-    WHERE "createdAt" >= '2024-04-17';
-
-/*  temporary solution for fix_dup_products  */
-CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
-    ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-04-17';
--- duplicates till last day.
--- WHERE  "dateId">18166;
-
-/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
-CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
-    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-04-17';-- WHERE  "dateId">18166;
-
-
-CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
-    ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-04-17';
-
-CREATE UNIQUE INDEX aggregatedProducts_uq_key
-    ON "aggregatedProducts" ("productId")
-    WHERE "createdAt" >= '2024-04-17';
-
-CREATE UNIQUE INDEX dates_uq_key
-    ON "dates" ("date")
-    WHERE "createdAt" >= '2024-04-17';
-
-CREATE UNIQUE INDEX promotions_uq_key
-    ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
-/*
-    retailerPromotionId is the retailers regexp/mechanicId key
-
-    promoId is an actual promotion id
-    TO BE CHECKED if is unique and not null
-*/
-    WHERE "createdAt" >= '2024-04-17';
-
-
-
 DROP FUNCTION IF EXISTS staging.load_retailer_data_base(json);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json) RETURNS void
     LANGUAGE plpgsql
@@ -2494,4 +2322,174 @@ TO DO
     RETURN;
 END ;
 
+$$;
+
+
+
+CREATE OR REPLACE FUNCTION fn_to_float(value text) RETURNS double precision
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::float;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+
+/*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
+CREATE UNIQUE INDEX coreProductCountryData_coreProductId_countryId_key
+    ON "coreProductCountryData" ("coreProductId", "countryId")
+    WHERE "createdAt" >= '2024-04-17';
+
+/*  temporary solution for fix_dup_products  */
+CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
+    ON products ("sourceId", "retailerId", "dateId")
+    WHERE "createdAt" >= '2024-04-17';
+-- duplicates till last day.
+-- WHERE  "dateId">18166;
+
+/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
+CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
+    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
+    WHERE "createdAt" >= '2024-04-17';-- WHERE  "dateId">18166;
+
+
+CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
+    ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
+    WHERE "createdAt" >= '2024-04-17';
+
+CREATE UNIQUE INDEX aggregatedProducts_uq_key
+    ON "aggregatedProducts" ("productId")
+    WHERE "createdAt" >= '2024-04-17';
+
+CREATE UNIQUE INDEX dates_uq_key
+    ON "dates" ("date")
+    WHERE "createdAt" >= '2024-04-17';
+
+CREATE UNIQUE INDEX promotions_uq_key
+    ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
+/*
+    retailerPromotionId is the retailers regexp/mechanicId key
+
+    promoId is an actual promotion id
+    TO BE CHECKED if is unique and not null
+*/
+    WHERE "createdAt" >= '2024-04-17';
+
+CREATE EXTENSION plv8;
+
+DROP FUNCTION IF EXISTS staging.compareTwoStrings(text, text);
+CREATE OR REPLACE FUNCTION staging.compareTwoStrings(title1 text, title2 text) RETURNS float
+    LANGUAGE plv8
+AS
+$$
+ const first = title1.replace(/\s+/g, '');
+    const second = title2.replace(/\s+/g, '');
+
+    if (!first.length && !second.length) return 1;
+    if (!first.length || !second.length) return 0;
+    if (first === second) return 1;
+    if (first.length === 1 && second.length === 1) return 0;
+    if (first.length < 2 || second.length < 2) return 0;
+
+    const firstBigrams = new Map();
+    for (let i = 0; i < first.length - 1; i += 1) {
+      const bigram = first.substr(i, 2);
+      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) + 1 : 1;
+
+      firstBigrams.set(bigram, count);
+    }
+    let intersectionSize = 0;
+    for (let i = 0; i < second.length - 1; i += 1) {
+      const bigram = second.substr(i, 2);
+      const count = firstBigrams.has(bigram) ? firstBigrams.get(bigram) : 0;
+
+      if (count > 0) {
+        firstBigrams.set(bigram, count - 1);
+        intersectionSize += 1;
+      }
+    }
+    return (2.0 * intersectionSize) / (first.length + second.length - 2);
+$$;
+
+DROP FUNCTION IF EXISTS staging.calculateMultibuyPrice(text, float);
+CREATE OR REPLACE FUNCTION staging.calculateMultibuyPrice(description text, price float) RETURNS float
+    LANGUAGE plv8
+AS
+$$
+function textToNumber(str) {
+  const numMap = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+  };
+
+  return Object.keys(numMap).reduce(
+    (res, text) => res.replace(new RegExp(text, 'gi'), numMap[text]),
+    str,
+  );
+}
+
+function numPrice(price) {
+  if (!price) return 1;
+  if (!isNaN(price)) return price;
+  if (price.includes('£')) return parseFloat(price.split('£')[1]).toFixed(2);
+  else if (price.includes('p'))
+    return parseFloat(price.split('p')[0] / 100).toFixed(2);
+  return price;
+}
+ if (!description || !price) return price;
+    let result = price;
+    const desc = textToNumber(description.replace(',', '').toLowerCase());
+
+    const isFloat = n => Number(n) === n && n % 1 !== 0;
+
+    const countAndPrice = desc.match(/£?(\d+(.\d{1,2})?|\d+\/\d+)p?/g);
+    if (!countAndPrice || !countAndPrice.length) return price;
+
+    const [count, discountPrice = '£1'] = countAndPrice;
+    const dp = numPrice(discountPrice);
+    let sum = price * count;
+
+    // "3 for 2" match
+    const forMatch = desc.match(/(\d+) for (\d+)/i);
+
+    if (forMatch) {
+      // eslint-disable-next-line no-unused-vars
+      const [match, totalCount, forCount] = forMatch;
+      sum = price * forCount;
+      result = sum / totalCount;
+    } else if (desc.includes('save')) {
+      const isPercent = desc.includes('%');
+      const halfPrice = desc.includes('half price');
+      // eslint-disable-next-line no-nested-ternary
+      const discount = isPercent ? (sum / 100) * dp : halfPrice ? sum / 2 : dp;
+      result = (sum - discount) / count;
+    } else if (desc.includes('price of')) {
+      result = (price * dp) / count;
+    } else if (desc.includes('free')) {
+      const freeCount = dp > count ? 1 : +dp;
+      result = sum / (+count + freeCount);
+    } else if (desc.includes('half price')) {
+      sum += (price / 2) * dp;
+      result = sum / (+count + +dp);
+    } else {
+      result = Math.round((dp * 100.0) / count) / 100;
+    }
+
+    result = isFloat(result) ? result.toFixed(2) : result;
+
+    return result.toString();
 $$;
