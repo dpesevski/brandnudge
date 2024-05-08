@@ -11,7 +11,6 @@ CREATE TYPE staging.t_promotion AS
     description           text,
     mechanic              text
 );
-
 DROP TYPE IF EXISTS staging.retailer_data;
 CREATE TYPE staging.retailer_data AS
 (
@@ -67,34 +66,6 @@ CREATE TYPE staging.retailer_data AS
     "amazonFulfilParty"    text,
     "amazonSell"           text
 );
-
-CREATE OR REPLACE FUNCTION multi_replace(value text, VARIADIC arr text[]) RETURNS text
-    LANGUAGE plpgsql
-AS
-$$
-DECLARE
-    e         text;
-    find_text text;
-BEGIN
-    BEGIN
-        FOREACH e IN ARRAY arr
-            LOOP
-                IF find_text IS NULL THEN
-                    find_text := e;
-                ELSE
-                    value := REPLACE(value, find_text, e);
-                    find_text := NULL;
-                END IF;
-            END LOOP;
-
-        RETURN value;
-    EXCEPTION
-        WHEN OTHERS THEN
-            RETURN NULL;
-    END;
-END;
-$$;
-
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
 (
@@ -120,7 +91,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_test_run
     dd_source_type        text,
     dd_sourceCategoryType text
 );
-
 DROP TABLE IF EXISTS staging.debug_tmp_product_pp;
 CREATE TABLE staging.debug_tmp_product_pp
 (
@@ -186,7 +156,6 @@ CREATE TABLE staging.debug_tmp_product_pp
     "EANs"                 text[],
     promotions             staging.t_promotion_mb[]
 );
-
 DROP TABLE IF EXISTS staging.debug_amazonProducts;
 CREATE TABLE IF NOT EXISTS staging.debug_amazonProducts
 (
@@ -202,7 +171,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_amazonProducts
     "createdAt"   timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"   timestamp WITH TIME ZONE NOT NULL
 );
-
 DROP TABLE IF EXISTS staging.debug_coreRetailers;
 CREATE TABLE IF NOT EXISTS staging.debug_coreRetailers
 (
@@ -214,8 +182,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreRetailers
     "createdAt"     timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"     timestamp WITH TIME ZONE NOT NULL
 );
-
-
 DROP TABLE IF EXISTS staging.debug_productStatuses;
 CREATE TABLE IF NOT EXISTS staging.debug_productStatuses
 (
@@ -227,7 +193,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_productStatuses
     "createdAt" timestamp WITH TIME ZONE NOT NULL,
     "updatedAt" timestamp WITH TIME ZONE NOT NULL
 );
-
 DROP TABLE IF EXISTS staging.debug_promotions;
 CREATE TABLE IF NOT EXISTS staging.debug_promotions
 (
@@ -242,7 +207,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_promotions
     "updatedAt"           timestamp WITH TIME ZONE NOT NULL,
     "promoId"             varchar(255)
 );
-
 DROP TABLE IF EXISTS staging.debug_aggregatedProducts;
 CREATE TABLE IF NOT EXISTS staging.debug_aggregatedProducts
 (
@@ -259,7 +223,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_aggregatedProducts
     ingredients   varchar(255) DEFAULT '0'::character varying,
     "imageMatch"  varchar(255) DEFAULT '0'::character varying
 );
-
 DROP TABLE IF EXISTS staging.debug_coreRetailerDates;
 CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerDates
 (
@@ -270,8 +233,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerDates
     "createdAt"      timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"      timestamp WITH TIME ZONE NOT NULL
 );
-
-
 DROP TABLE IF EXISTS staging.debug_products;
 CREATE TABLE IF NOT EXISTS staging.debug_products
 (
@@ -312,7 +273,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_products
     "sizeUnit"             varchar(255),
     "dateId"               integer
 );
-
 DROP TABLE IF EXISTS staging.debug_coreProducts;
 CREATE TABLE IF NOT EXISTS staging.debug_coreProducts
 (
@@ -362,7 +322,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreProductCountryData
     "ownLabelManufacturerId" integer,
     "brandbankManaged"       boolean DEFAULT FALSE
 );
-
 DROP TABLE IF EXISTS staging.debug_coreProductBarcodes;
 CREATE TABLE IF NOT EXISTS staging.debug_coreProductBarcodes
 (
@@ -375,9 +334,7 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreProductBarcodes
     "updatedAt"     timestamp WITH TIME ZONE NOT NULL
 );
 
-
 /*  non pp debug tables */
-
 DROP TABLE IF EXISTS staging.debug_tmp_daily_data;
 CREATE TABLE IF NOT EXISTS staging.debug_tmp_daily_data
 (
@@ -434,8 +391,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_tmp_daily_data
     "amazonFulfilParty"    text,
     "amazonSell"           text
 );
-
-
 DROP TABLE IF EXISTS staging.debug_tmp_product;
 CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
 (
@@ -494,10 +449,7 @@ CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
     screenshot           text,
     ranking_data         "productsData"[]
 );
-
-
 DROP TABLE IF EXISTS staging.debug_retailers;
-
 CREATE TABLE IF NOT EXISTS staging.debug_retailers
 (
     test_run_id integer,
@@ -519,7 +471,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_sourceCategories
     "updatedAt" timestamp WITH TIME ZONE NOT NULL,
     type        varchar(255)             NOT NULL
 );
-
 DROP TABLE IF EXISTS staging.debug_productsData;
 CREATE TABLE IF NOT EXISTS staging.debug_productsData
 (
@@ -537,8 +488,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_productsData
     "featuredRank"     integer,
     "taxonomyId"       integer      DEFAULT 0
 );
-
-
 DROP TABLE IF EXISTS staging.debug_coreRetailerTaxonomies;
 CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerTaxonomies
 (
@@ -549,7 +498,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerTaxonomies
     "createdAt"          timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"          timestamp WITH TIME ZONE NOT NULL
 );
-
 DROP TABLE IF EXISTS staging.debug_coreProductSourceCategories;
 CREATE TABLE IF NOT EXISTS staging.debug_coreProductSourceCategories
 (
@@ -560,8 +508,6 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreProductSourceCategories
     "createdAt"        timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"        timestamp WITH TIME ZONE NOT NULL
 );
-
-
 
 DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
@@ -582,7 +528,6 @@ BEGIN
     RETURN;
 END;
 $$;
-
 
 DROP FUNCTION IF EXISTS staging.load_retailer_data_pp(json);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json) RETURNS void
@@ -2324,8 +2269,6 @@ END ;
 
 $$;
 
-
-
 CREATE OR REPLACE FUNCTION fn_to_float(value text) RETURNS double precision
     LANGUAGE plpgsql
 AS
@@ -2340,6 +2283,32 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION multi_replace(value text, VARIADIC arr text[]) RETURNS text
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    e         text;
+    find_text text;
+BEGIN
+    BEGIN
+        FOREACH e IN ARRAY arr
+            LOOP
+                IF find_text IS NULL THEN
+                    find_text := e;
+                ELSE
+                    value := REPLACE(value, find_text, e);
+                    find_text := NULL;
+                END IF;
+            END LOOP;
+
+        RETURN value;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
 
 /*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
 CREATE UNIQUE INDEX coreProductCountryData_coreProductId_countryId_key
@@ -2357,7 +2326,6 @@ CREATE UNIQUE INDEX products_sourceId_retailerId_dateId_key
 CREATE UNIQUE INDEX coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
     ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
     WHERE "createdAt" >= '2024-04-17';-- WHERE  "dateId">18166;
-
 
 CREATE UNIQUE INDEX coreProductSourceCategories_uq_key
     ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
