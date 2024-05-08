@@ -500,8 +500,8 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
+DROP FUNCTION IF EXISTS staging.load_retailer_data_base(json);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -606,7 +606,7 @@ BEGIN
                                        dd_source_type,
                                        dd_sourceCategoryType)
     SELECT value,
-           flag,
+           'create-products' AS flag,
            dd_date,
            dd_retailer,
            dd_date_id,
@@ -1468,7 +1468,7 @@ SELECT created_at
 FROM staging.retailer_daily_data
 WHERE flag = 'create-products';
 
-SELECT staging.load_retailer_data(fetched_data)
+SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.retailer_daily_data
 WHERE flag = 'create-products'
   AND created_at = '2024-04-16 07:00:01.135625 +00:00';
