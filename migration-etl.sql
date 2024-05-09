@@ -191,11 +191,14 @@ BEGIN
 END;
 $$;
 
-DROP SCHEMA IF EXISTS staging_tmp CASCADE;
-CREATE SCHEMA staging_tmp;
 
-DROP TYPE IF EXISTS staging_tmp.t_promotion CASCADE;
-CREATE TYPE staging_tmp.t_promotion AS
+--ALTER SCHEMA staging RENAME TO staging_bck;
+
+DROP SCHEMA IF EXISTS staging CASCADE;
+CREATE SCHEMA staging;
+
+DROP TYPE IF EXISTS staging.t_promotion CASCADE;
+CREATE TYPE staging.t_promotion AS
 (
     "promoId"             text,
     "retailerPromotionId" integer,
@@ -204,8 +207,8 @@ CREATE TYPE staging_tmp.t_promotion AS
     description           text,
     mechanic              text
 );
-DROP TYPE IF EXISTS staging_tmp.retailer_data;
-CREATE TYPE staging_tmp.retailer_data AS
+DROP TYPE IF EXISTS staging.retailer_data;
+CREATE TYPE staging.retailer_data AS
 (
     retailer               retailers,
     ean                    text,
@@ -218,7 +221,7 @@ CREATE TYPE staging_tmp.retailer_data AS
     category               text,
     featured               boolean,
     features               text,
-    promotions             staging_tmp.t_promotion[],
+    promotions             staging.t_promotion[],
     multibuy               boolean,
     "sizeUnit"             text,
     "sourceId"             text,
@@ -259,8 +262,8 @@ CREATE TYPE staging_tmp.retailer_data AS
     "amazonFulfilParty"    text,
     "amazonSell"           text
 );
-DROP TYPE IF EXISTS staging_tmp.t_promotion_mb CASCADE;
-CREATE TYPE staging_tmp.t_promotion_mb AS
+DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
+CREATE TYPE staging.t_promotion_mb AS
 (
     "promoId"             text,
     "retailerPromotionId" integer,
@@ -271,8 +274,8 @@ CREATE TYPE staging_tmp.t_promotion_mb AS
     "multibuyPrice"       float
 );
 
-DROP TABLE IF EXISTS staging_tmp.debug_test_run;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_test_run
+DROP TABLE IF EXISTS staging.debug_test_run;
+CREATE TABLE IF NOT EXISTS staging.debug_test_run
 (
     id                    serial,
     data                  json,
@@ -284,8 +287,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_test_run
     dd_source_type        text,
     dd_sourceCategoryType text
 );
-DROP TABLE IF EXISTS staging_tmp.debug_tmp_product_pp;
-CREATE TABLE staging_tmp.debug_tmp_product_pp
+DROP TABLE IF EXISTS staging.debug_tmp_product_pp;
+CREATE TABLE staging.debug_tmp_product_pp
 (
     test_run_id            integer,
     id                     integer,
@@ -347,10 +350,10 @@ CREATE TABLE staging_tmp.debug_tmp_product_pp
     "brandId"              integer,
     dd_ranking             "productsData",
     "EANs"                 text[],
-    promotions             staging_tmp.t_promotion_mb[]
+    promotions             staging.t_promotion_mb[]
 );
-DROP TABLE IF EXISTS staging_tmp.debug_amazonProducts;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_amazonProducts
+DROP TABLE IF EXISTS staging.debug_amazonProducts;
+CREATE TABLE IF NOT EXISTS staging.debug_amazonProducts
 (
     test_run_id   integer,
     id            integer,
@@ -364,8 +367,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_amazonProducts
     "createdAt"   timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"   timestamp WITH TIME ZONE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreRetailers;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailers
+DROP TABLE IF EXISTS staging.debug_coreRetailers;
+CREATE TABLE IF NOT EXISTS staging.debug_coreRetailers
 (
     test_run_id     integer,
     id              integer,
@@ -375,8 +378,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailers
     "createdAt"     timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"     timestamp WITH TIME ZONE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_productStatuses;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_productStatuses
+DROP TABLE IF EXISTS staging.debug_productStatuses;
+CREATE TABLE IF NOT EXISTS staging.debug_productStatuses
 (
     test_run_id integer,
     id          integer,
@@ -386,8 +389,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_productStatuses
     "createdAt" timestamp WITH TIME ZONE NOT NULL,
     "updatedAt" timestamp WITH TIME ZONE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_promotions;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_promotions
+DROP TABLE IF EXISTS staging.debug_promotions;
+CREATE TABLE IF NOT EXISTS staging.debug_promotions
 (
     test_run_id           integer,
     id                    integer,
@@ -400,8 +403,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_promotions
     "updatedAt"           timestamp WITH TIME ZONE NOT NULL,
     "promoId"             varchar(255)
 );
-DROP TABLE IF EXISTS staging_tmp.debug_aggregatedProducts;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_aggregatedProducts
+DROP TABLE IF EXISTS staging.debug_aggregatedProducts;
+CREATE TABLE IF NOT EXISTS staging.debug_aggregatedProducts
 (
     test_run_id   integer,
     id            integer,
@@ -416,8 +419,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_aggregatedProducts
     ingredients   varchar(255) DEFAULT '0'::character varying,
     "imageMatch"  varchar(255) DEFAULT '0'::character varying
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreRetailerDates;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailerDates
+DROP TABLE IF EXISTS staging.debug_coreRetailerDates;
+CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerDates
 (
     test_run_id      integer,
     id               integer,
@@ -426,8 +429,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailerDates
     "createdAt"      timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"      timestamp WITH TIME ZONE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_products;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_products
+DROP TABLE IF EXISTS staging.debug_products;
+CREATE TABLE IF NOT EXISTS staging.debug_products
 (
     test_run_id            integer,
     id                     integer,
@@ -466,8 +469,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_products
     "sizeUnit"             varchar(255),
     "dateId"               integer
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreProducts;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProducts
+DROP TABLE IF EXISTS staging.debug_coreProducts;
+CREATE TABLE IF NOT EXISTS staging.debug_coreProducts
 (
     test_run_id       integer,
     id                integer,
@@ -492,8 +495,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProducts
     reviewed          boolean      DEFAULT FALSE NOT NULL,
     "productOptions"  boolean      DEFAULT FALSE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreProductCountryData;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductCountryData
+DROP TABLE IF EXISTS staging.debug_coreProductCountryData;
+CREATE TABLE IF NOT EXISTS staging.debug_coreProductCountryData
 (
     test_run_id              integer,
     id                       integer,
@@ -515,8 +518,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductCountryData
     "ownLabelManufacturerId" integer,
     "brandbankManaged"       boolean DEFAULT FALSE
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreProductBarcodes;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductBarcodes
+DROP TABLE IF EXISTS staging.debug_coreProductBarcodes;
+CREATE TABLE IF NOT EXISTS staging.debug_coreProductBarcodes
 (
     test_run_id     integer,
     id              integer,
@@ -528,8 +531,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductBarcodes
 );
 
 /*  non pp debug tables */
-DROP TABLE IF EXISTS staging_tmp.debug_tmp_daily_data;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_tmp_daily_data
+DROP TABLE IF EXISTS staging.debug_tmp_daily_data;
+CREATE TABLE IF NOT EXISTS staging.debug_tmp_daily_data
 (
     test_run_id            integer,
     retailer               retailers,
@@ -543,7 +546,7 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_tmp_daily_data
     category               text,
     featured               boolean,
     features               text,
-    promotions             staging_tmp.t_promotion[],
+    promotions             staging.t_promotion[],
     multibuy               boolean,
     "sizeUnit"             text,
     "sourceId"             text,
@@ -584,13 +587,13 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_tmp_daily_data
     "amazonFulfilParty"    text,
     "amazonSell"           text
 );
-DROP TABLE IF EXISTS staging_tmp.debug_tmp_product;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_tmp_product
+DROP TABLE IF EXISTS staging.debug_tmp_product;
+CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
 (
     test_run_id          integer,
     id                   integer,
     "coreProductId"      integer,
-    promotions           staging_tmp.t_promotion[],
+    promotions           staging.t_promotion[],
     "productPrice"       double precision,
     "originalPrice"      double precision,
     "basePrice"          double precision,
@@ -642,8 +645,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_tmp_product
     screenshot           text,
     ranking_data         "productsData"[]
 );
-DROP TABLE IF EXISTS staging_tmp.debug_retailers;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_retailers
+DROP TABLE IF EXISTS staging.debug_retailers;
+CREATE TABLE IF NOT EXISTS staging.debug_retailers
 (
     test_run_id integer,
     id          integer,
@@ -654,8 +657,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_retailers
     logo        varchar(255),
     "countryId" integer
 );
-DROP TABLE IF EXISTS staging_tmp.debug_sourceCategories;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_sourceCategories
+DROP TABLE IF EXISTS staging.debug_sourceCategories;
+CREATE TABLE IF NOT EXISTS staging.debug_sourceCategories
 (
     test_run_id integer,
     id          integer,
@@ -664,8 +667,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_sourceCategories
     "updatedAt" timestamp WITH TIME ZONE NOT NULL,
     type        varchar(255)             NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_productsData;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_productsData
+DROP TABLE IF EXISTS staging.debug_productsData;
+CREATE TABLE IF NOT EXISTS staging.debug_productsData
 (
     test_run_id        integer,
     id                 integer,
@@ -681,8 +684,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_productsData
     "featuredRank"     integer,
     "taxonomyId"       integer      DEFAULT 0
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreRetailerTaxonomies;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailerTaxonomies
+DROP TABLE IF EXISTS staging.debug_coreRetailerTaxonomies;
+CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerTaxonomies
 (
     test_run_id          integer,
     id                   integer,
@@ -691,8 +694,8 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreRetailerTaxonomies
     "createdAt"          timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"          timestamp WITH TIME ZONE NOT NULL
 );
-DROP TABLE IF EXISTS staging_tmp.debug_coreProductSourceCategories;
-CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductSourceCategories
+DROP TABLE IF EXISTS staging.debug_coreProductSourceCategories;
+CREATE TABLE IF NOT EXISTS staging.debug_coreProductSourceCategories
 (
     test_run_id        integer,
     id                 integer,
@@ -702,28 +705,35 @@ CREATE TABLE IF NOT EXISTS staging_tmp.debug_coreProductSourceCategories
     "updatedAt"        timestamp WITH TIME ZONE NOT NULL
 );
 
-DROP FUNCTION IF EXISTS staging_tmp.load_retailer_data(json, text);
-CREATE OR REPLACE FUNCTION staging_tmp.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
+CREATE TABLE staging.retailer_daily_data
+(
+    fetched_data json,
+    flag         text,
+    created_at   timestamp WITH TIME ZONE DEFAULT NOW()
+);
+
+DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
 BEGIN
 
-    INSERT INTO staging_tmp.retailer_daily_data (fetched_data, flag)
+    INSERT INTO staging.retailer_daily_data (fetched_data, flag)
     VALUES (value, flag);
 
     IF flag = 'create-products' THEN
-        PERFORM staging_tmp.load_retailer_data(value);
+        PERFORM staging.load_retailer_data_base(value);
     ELSEIF flag = 'create-products-pp' THEN
-        PERFORM staging_tmp.load_retailer_data_pp(value);
+        PERFORM staging.load_retailer_data_pp(value);
     END IF;
 
     RETURN;
 END;
 $$;
 
-DROP FUNCTION IF EXISTS staging_tmp.load_retailer_data_pp(json);
-CREATE OR REPLACE FUNCTION staging_tmp.load_retailer_data_pp(value json) RETURNS void
+DROP FUNCTION IF EXISTS staging.load_retailer_data_pp(json);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -736,6 +746,11 @@ BEGIN
 
     dd_date := value #> '{products,0,date}';
 
+    IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
+        RAISE NOTICE 'no retailer data: %   %', value #>> '{retailer}', value #>> '{products,0,ean}';
+        RETURN;
+    END IF;
+
     SELECT *
     INTO dd_retailer
     FROM JSON_POPULATE_RECORD(NULL::retailers,
@@ -747,11 +762,11 @@ BEGIN
     ON CONFLICT DO NOTHING
     RETURNING id INTO dd_date_id;
 
-    INSERT INTO staging_tmp.debug_test_run(data,
-                                           flag,
-                                           dd_date,
-                                           dd_retailer,
-                                           dd_date_id)
+    INSERT INTO staging.debug_test_run(data,
+                                       flag,
+                                       dd_date,
+                                       dd_retailer,
+                                       dd_date_id)
     SELECT value,
            'create-products-pp' AS flag,
            dd_date,
@@ -790,7 +805,7 @@ BEGIN
                                      fn_to_boolean(product."inStock")                    AS "inStock",
                                      fn_to_boolean(product."onPromo")                    AS "onPromo",
                                      COALESCE(product."promoData",
-                                              ARRAY []::staging_tmp.t_promotion_pp[])    AS "promoData",
+                                              ARRAY []::staging.t_promotion_pp[])        AS "promoData",
                                      COALESCE(product."skuURL", '')                      AS href,
                                      product."imageURL",
                                      COALESCE(fn_to_boolean(product."bundled"), FALSE)   AS "bundled",
@@ -807,7 +822,7 @@ BEGIN
                                      "amazonFulfilParty",
                                      "amazonSell",
                                      ROW_NUMBER() OVER (PARTITION BY "sourceId")         AS rownum -- use only the first sourceId record
-                              FROM JSON_POPULATE_RECORDSET(NULL::staging_tmp.retailer_data_pp,
+                              FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
                                                            value #> '{products}') AS product),
         dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice") AS "originalPrice",
                                "shelfPrice"                       AS "productPrice",
@@ -852,41 +867,41 @@ BEGIN
 
                         WHERE rownum = 1)
 
-    SELECT NULL::integer                                                           AS id,
-           dd_retailer.name                                                        AS "sourceType",
+    SELECT NULL::integer                                                       AS id,
+           dd_retailer.name                                                    AS "sourceType",
            checkEAN.ean,
            -- COALESCE(ARRAY_LENGTH(trsf_promo.promotions, 1) > 0, FALSE)         AS products_promotions_flag,
-           COALESCE(trsf_promo."promotionDescription", '')                         AS "promotionDescription",
-           ''                                                                      AS features,
+           COALESCE(trsf_promo."promotionDescription", '')                     AS "promotionDescription",
+           ''                                                                  AS features,
            dd_products.date,
            dd_products."sourceId",
            dd_products."productBrand",
            dd_products."productTitle",
            dd_products."productImage",
-           FALSE                                                                   AS "secondaryImages",
-           ''                                                                      AS "productDescription",
-           ''                                                                      AS "productInfo",
-           dd_products."originalPrice"                                             AS "promotedPrice",
+           FALSE                                                               AS "secondaryImages",
+           ''                                                                  AS "productDescription",
+           ''                                                                  AS "productInfo",
+           dd_products."originalPrice"                                         AS "promotedPrice",
            dd_products."productInStock",
-           TRUE                                                                    AS "productInListing",
-           NULL::integer                                                           AS "reviewsCount",
-           NULL::float                                                             AS "reviewsStars",
-           NULL                                                                    AS "eposId",
-           COALESCE(trsf_promo.is_multibuy, FALSE)                                 AS multibuy,
-           NULL::integer                                                           AS "coreProductId",
-           dd_retailer.id                                                          AS "retailerId",
-           NOW()                                                                   AS "createdAt",
-           NOW()                                                                   AS "updatedAt",
-           NULL                                                                    AS "imageId",
-           ''                                                                         size,
-           NULL                                                                    AS "pricePerWeight",
+           TRUE                                                                AS "productInListing",
+           NULL::integer                                                       AS "reviewsCount",
+           NULL::float                                                         AS "reviewsStars",
+           NULL                                                                AS "eposId",
+           COALESCE(trsf_promo.is_multibuy, FALSE)                             AS multibuy,
+           NULL::integer                                                       AS "coreProductId",
+           dd_retailer.id                                                      AS "retailerId",
+           NOW()                                                               AS "createdAt",
+           NOW()                                                               AS "updatedAt",
+           NULL                                                                AS "imageId",
+           ''                                                                     size,
+           NULL                                                                AS "pricePerWeight",
            dd_products.href,
-           ''                                                                      AS nutritional,
-           dd_products."originalPrice"                                             AS "basePrice",
-           dd_products."originalPrice"                                             AS "shelfPrice",
-           dd_products."productTitle"                                              AS "productTitleDetail",
-           NULL                                                                    AS "sizeUnit",
-           dd_date_id                                                              AS "dateId",
+           ''                                                                  AS nutritional,
+           dd_products."originalPrice"                                         AS "basePrice",
+           dd_products."originalPrice"                                         AS "shelfPrice",
+           dd_products."productTitle"                                          AS "productTitleDetail",
+           NULL                                                                AS "sizeUnit",
+           dd_date_id                                                          AS "dateId",
 
            dd_products."countryCode",
            dd_products."currency",
@@ -915,7 +930,7 @@ BEGIN
            prod_brand."brandId",
            dd_ranking::"productsData",
            trsf_ean."EANs",
-           COALESCE(trsf_promo.promotions, ARRAY []::staging_tmp.t_promotion_mb[]) AS promotions
+           COALESCE(trsf_promo.promotions, ARRAY []::staging.t_promotion_mb[]) AS promotions
 
     FROM dd_products
 
@@ -956,13 +971,13 @@ BEGIN
                                                   promo_description,--AS description,
                                                   promo_type,-- AS mechanic,
                                                   fn_to_float(multibuy_price)-- AS "multibuyPrice"
-                                                     )::staging_tmp.t_promotion_mb)   AS promotions,
+                                                     )::staging.t_promotion_mb)       AS promotions,
                                          STRING_AGG(promo_description, ';')           AS "promotionDescription",
                                          SUM(fn_to_float(multibuy_price)) IS NOT NULL AS is_multibuy
-                                  FROM UNNEST(COALESCE("promoData", ARRAY []::staging_tmp.t_promotion_pp[])) AS promo (promo_id,
-                                                                                                                       promo_type,
-                                                                                                                       promo_description,
-                                                                                                                       multibuy_price)
+                                  FROM UNNEST(COALESCE("promoData", ARRAY []::staging.t_promotion_pp[])) AS promo (promo_id,
+                                                                                                                   promo_type,
+                                                                                                                   promo_description,
+                                                                                                                   multibuy_price)
         ) AS trsf_promo
         --   LEFT OUTER JOIN prod_brand ON (ARRAY ["productBrand"] && brand_names);
              LEFT OUTER JOIN prod_brand USING ("productBrand");
@@ -1084,7 +1099,7 @@ BEGIN
                                                  "endDate",
                                                  description,
                                                  "promotionMechanicName",
-                                                 "multibuyPrice")::staging_tmp.t_promotion_mb
+                                                 "multibuyPrice")::staging.t_promotion_mb
                                                 ORDER BY promo_indx)                            AS promotions
                                FROM promo_price_calc
                                GROUP BY 1)
@@ -1157,7 +1172,7 @@ BEGIN
                              "updatedAt" = excluded."updatedAt"
                      RETURNING "coreProducts".*),
          debug_ins_coreProducts AS (
-             INSERT INTO staging_tmp.debug_coreProducts
+             INSERT INTO staging.debug_coreProducts
                  SELECT debug_test_run_id, * FROM ins_coreProducts),
         /*  createProductCountryData    */
          ins_prod_country_data AS (INSERT INTO "coreProductCountryData" ("coreProductId",
@@ -1199,7 +1214,7 @@ BEGIN
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
          debug_ins_coreProductCountryData AS (
-             INSERT INTO staging_tmp.debug_coreProductCountryData
+             INSERT INTO staging.debug_coreProductCountryData
                  SELECT debug_test_run_id, * FROM ins_prod_country_data),
          ins_coreProductBarcodes AS (
              INSERT
@@ -1212,7 +1227,7 @@ BEGIN
                              SET "updatedAt" = excluded."updatedAt"
                      RETURNING "coreProductBarcodes".*),
          debug_ins_coreProductBarcodes AS (
-             INSERT INTO staging_tmp.debug_coreProductBarcodes
+             INSERT INTO staging.debug_coreProductBarcodes
                  SELECT debug_test_run_id, * FROM ins_coreProductBarcodes)
     UPDATE tmp_product_pp
     SET "coreProductId"=ins_coreProducts.id
@@ -1314,7 +1329,7 @@ BEGIN
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*),
          debug_ins_products AS (
-             INSERT INTO staging_tmp.debug_products
+             INSERT INTO staging.debug_products
                  SELECT debug_test_run_id, * FROM ins_products)
     UPDATE tmp_product_pp
     SET id=ins_products.id
@@ -1323,7 +1338,7 @@ BEGIN
       AND tmp_product_pp."retailerId" = ins_products."retailerId"
       AND tmp_product_pp."dateId" = ins_products."dateId";
 
-    INSERT INTO staging_tmp.debug_tmp_product_pp
+    INSERT INTO staging.debug_tmp_product_pp
     SELECT debug_test_run_id, *
     FROM tmp_product_pp;
 
@@ -1353,7 +1368,7 @@ BEGIN
         WHERE LOWER("sourceType") LIKE '%amazon%'
         RETURNING "amazonProducts".*)
     INSERT
-    INTO staging_tmp.debug_amazonproducts
+    INTO staging.debug_amazonproducts
     SELECT debug_test_run_id, *
     FROM debug_ins_amz;
 
@@ -1385,7 +1400,7 @@ BEGIN
     FROM ins_coreRetailers;
 
     INSERT
-    INTO staging_tmp.debug_coreRetailers
+    INTO staging.debug_coreRetailers
     SELECT debug_test_run_id, *
     FROM tmp_coreRetailer;
 
@@ -1405,7 +1420,7 @@ BEGIN
             DO NOTHING
         RETURNING "productStatuses".*)
     INSERT
-    INTO staging_tmp.debug_productStatuses
+    INTO staging.debug_productStatuses
     SELECT debug_test_run_id, *
     FROM debug_productStatuses;
 
@@ -1440,7 +1455,7 @@ BEGIN
                         "updatedAt" = excluded."updatedAt"
             RETURNING promotions.*)
     INSERT
-    INTO staging_tmp.debug_promotions
+    INTO staging.debug_promotions
     SELECT debug_test_run_id, *
     FROM debug_ins_promotions;
 
@@ -1475,7 +1490,7 @@ BEGIN
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
-    INTO staging_tmp.debug_aggregatedProducts
+    INTO staging.debug_aggregatedProducts
     SELECT debug_test_run_id, *
     FROM debug_ins_aggregatedProducts;
 
@@ -1496,7 +1511,7 @@ BEGIN
             DO NOTHING
         RETURNING "coreRetailerDates".*)
     INSERT
-    INTO staging_tmp.debug_coreRetailerDates
+    INTO staging.debug_coreRetailerDates
     SELECT debug_test_run_id, *
     FROM debug_coreRetailerDates;
 
@@ -1507,8 +1522,8 @@ BEGIN
 END ;
 $$;
 
-DROP FUNCTION IF EXISTS staging_tmp.load_retailer_data_base(json);
-CREATE OR REPLACE FUNCTION staging_tmp.load_retailer_data_base(value json) RETURNS void
+DROP FUNCTION IF EXISTS staging.load_retailer_data_base(json);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -1521,7 +1536,7 @@ DECLARE
     debug_test_run_id     integer;
 BEGIN
     /*
-    INSERT INTO staging_tmp.retailer_daily_data (fetched_data)
+    INSERT INTO staging.retailer_daily_data (fetched_data)
     VALUES (value);
     */
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
@@ -1576,7 +1591,7 @@ BEGIN
            "fulfilParty",
            "amazonFulfilParty",
            "amazonSell"
-    FROM JSON_POPULATE_RECORDSET(NULL::staging_tmp.retailer_data,
+    FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
                                  value) AS product;
     /* value -> 'products' */
     --RETURN;
@@ -1605,13 +1620,13 @@ BEGIN
         INSERT INTO retailers (name, "countryId") VALUES (dd_source_type, 1) RETURNING * INTO dd_retailer; /*   1-GB */
     END IF;
 
-    INSERT INTO staging_tmp.debug_test_run(data,
-                                           flag,
-                                           dd_date,
-                                           dd_retailer,
-                                           dd_date_id,
-                                           dd_source_type,
-                                           dd_sourceCategoryType)
+    INSERT INTO staging.debug_test_run(data,
+                                       flag,
+                                       dd_date,
+                                       dd_retailer,
+                                       dd_date_id,
+                                       dd_source_type,
+                                       dd_sourceCategoryType)
     SELECT value,
            'create-products' AS flag,
            dd_date,
@@ -1634,7 +1649,7 @@ BEGIN
                  WHERE "sourceCategories".id IS NULL
                  RETURNING "sourceCategories".*)
     INSERT
-    INTO staging_tmp.debug_sourceCategories
+    INTO staging.debug_sourceCategories
     SELECT debug_test_run_id, *
     FROM debug_ins_sourceCategories;
 
@@ -1927,7 +1942,7 @@ TO DO
                                                  "startDate",
                                                  "endDate",
                                                  description,
-                                                 "promotionMechanicName")::staging_tmp.t_promotion
+                                                 "promotionMechanicName")::staging.t_promotion
                                                 ORDER BY promo_indx)                            AS promotions
                                FROM promo_price_calc
                                GROUP BY 1)
@@ -2020,7 +2035,7 @@ TO DO
                              "updatedAt" = excluded."updatedAt"
                      RETURNING "coreProducts".*),
          debug_ins_coreProducts AS (
-             INSERT INTO staging_tmp.debug_coreProducts
+             INSERT INTO staging.debug_coreProducts
                  SELECT debug_test_run_id, * FROM ins_coreProducts),
 
         /*  createProductCountryData    */
@@ -2063,7 +2078,7 @@ TO DO
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
          debug_ins_coreProductCountryData AS (
-             INSERT INTO staging_tmp.debug_coreProductCountryData
+             INSERT INTO staging.debug_coreProductCountryData
                  SELECT debug_test_run_id, * FROM ins_prod_country_data),
          ins_coreProductBarcodes AS (
              INSERT
@@ -2076,7 +2091,7 @@ TO DO
                              SET "updatedAt" = excluded."updatedAt"
                      RETURNING "coreProductBarcodes".*),
          debug_ins_coreProductBarcodes AS (
-             INSERT INTO staging_tmp.debug_coreProductBarcodes
+             INSERT INTO staging.debug_coreProductBarcodes
                  SELECT debug_test_run_id, * FROM ins_coreProductBarcodes)
     UPDATE tmp_product
     SET "coreProductId"=ins_coreProducts.id
@@ -2178,7 +2193,7 @@ TO DO
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*),
          debug_ins_products AS (
-             INSERT INTO staging_tmp.debug_products
+             INSERT INTO staging.debug_products
                  SELECT debug_test_run_id, * FROM ins_products)
     UPDATE tmp_product
     SET id=ins_products.id
@@ -2221,7 +2236,7 @@ TO DO
                  CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
         RETURNING "productsData".*)
     INSERT
-    INTO staging_tmp.debug_productsdata
+    INTO staging.debug_productsdata
     SELECT debug_test_run_id, *
     FROM debug_ins_productsData;
 
@@ -2251,7 +2266,7 @@ TO DO
         WHERE LOWER("sourceType") LIKE '%amazon%'
         RETURNING "amazonProducts".*)
     INSERT
-    INTO staging_tmp.debug_amazonproducts
+    INTO staging.debug_amazonproducts
     SELECT debug_test_run_id, *
     FROM debug_ins_amz;
 
@@ -2283,7 +2298,7 @@ TO DO
     FROM ins_coreRetailers;
 
     INSERT
-    INTO staging_tmp.debug_coreRetailers
+    INTO staging.debug_coreRetailers
     SELECT debug_test_run_id, *
     FROM tmp_coreRetailer;
 
@@ -2310,7 +2325,7 @@ TO DO
             DO NOTHING
         RETURNING "coreRetailerTaxonomies".*)
     INSERT
-    INTO staging_tmp.debug_coreretailertaxonomies
+    INTO staging.debug_coreretailertaxonomies
     SELECT debug_test_run_id, *
     FROM debug_coreRetailerTaxonomies;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
@@ -2331,7 +2346,7 @@ TO DO
             DO NOTHING
         RETURNING "productStatuses".*)
     INSERT
-    INTO staging_tmp.debug_productStatuses
+    INTO staging.debug_productStatuses
     SELECT debug_test_run_id, *
     FROM debug_productStatuses;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
@@ -2365,7 +2380,7 @@ TO DO
                         "updatedAt" = excluded."updatedAt"
             RETURNING promotions.*)
     INSERT
-    INTO staging_tmp.debug_promotions
+    INTO staging.debug_promotions
     SELECT debug_test_run_id, *
     FROM debug_ins_promotions;
 
@@ -2400,7 +2415,7 @@ TO DO
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
-    INTO staging_tmp.debug_aggregatedProducts
+    INTO staging.debug_aggregatedProducts
     SELECT debug_test_run_id, *
     FROM debug_ins_aggregatedProducts;
 
@@ -2422,7 +2437,7 @@ TO DO
                 DO NOTHING
             RETURNING "coreRetailerDates".*)
     INSERT
-    INTO staging_tmp.debug_coreRetailerDates
+    INTO staging.debug_coreRetailerDates
     SELECT debug_test_run_id, *
     FROM debug_ins_coreRetailerDates;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
@@ -2445,16 +2460,16 @@ TO DO
                 DO NOTHING
             RETURNING "coreProductSourceCategories".*)
     INSERT
-    INTO staging_tmp.debug_coreProductSourceCategories
+    INTO staging.debug_coreProductSourceCategories
     SELECT debug_test_run_id, *
     FROM debug_ins_coreProductSourceCategories;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    INSERT INTO staging_tmp.debug_tmp_product
+    INSERT INTO staging.debug_tmp_product
     SELECT debug_test_run_id, *
     FROM tmp_product;
 
-    INSERT INTO staging_tmp.debug_tmp_daily_data
+    INSERT INTO staging.debug_tmp_daily_data
     SELECT debug_test_run_id, *
     FROM tmp_daily_data;
 
@@ -2463,5 +2478,3 @@ END ;
 
 $$;
 
-ALTER SCHEMA staging RENAME TO staging_bck;
-ALTER SCHEMA staging_tmp RENAME TO staging;

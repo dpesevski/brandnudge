@@ -1469,7 +1469,7 @@ FROM staging.retailer_daily_data
 WHERE flag = 'create-products';
 
 SELECT staging.load_retailer_data(fetched_data, flag)
-FROM staging.retailer_daily_data
+FROM staging_bck.retailer_daily_data
 WHERE flag = 'create-products'
   AND created_at = '2024-04-16 07:00:01.135625 +00:00';
 
