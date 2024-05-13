@@ -1,32 +1,39 @@
 /*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
+DROP INDEX IF EXISTS coreProductCountryData_coreProductId_countryId_key;
 CREATE UNIQUE INDEX IF NOT EXISTS coreProductCountryData_coreProductId_countryId_key
     ON "coreProductCountryData" ("coreProductId", "countryId")
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 
 /*  temporary solution for fix_dup_products  */
+DROP INDEX IF EXISTS products_sourceId_retailerId_dateId_key;
 CREATE UNIQUE INDEX IF NOT EXISTS products_sourceId_retailerId_dateId_key
     ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 -- duplicates till last day.
 -- WHERE  "dateId">18166;
 
 /*  temporary solution for fix_dup_coreRetailerTaxonomies  */
+DROP INDEX IF EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq;
 CREATE UNIQUE INDEX IF NOT EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
     ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-05-09';-- WHERE  "dateId">18166;
+    WHERE "createdAt" >= '2024-05-13';-- WHERE  "dateId">18166;
 
+DROP INDEX IF EXISTS coreProductSourceCategories_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS coreProductSourceCategories_uq_key
     ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 
+DROP INDEX IF EXISTS aggregatedProducts_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS aggregatedProducts_uq_key
     ON "aggregatedProducts" ("productId")
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 
+DROP INDEX IF EXISTS dates_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS dates_uq_key
     ON "dates" ("date")
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 
+DROP INDEX IF EXISTS promotions_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
     ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
 /*
@@ -35,7 +42,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
     promoId is an actual promotion id
     TO BE CHECKED if is unique and not null
 */
-    WHERE "createdAt" >= '2024-05-09';
+    WHERE "createdAt" >= '2024-05-13';
 
 
 CREATE EXTENSION IF NOT EXISTS plv8;
@@ -164,6 +171,36 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.fn_to_date(value text) RETURNS date
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::date;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+
+CREATE OR REPLACE FUNCTION public.fn_to_boolean(value text) RETURNS boolean
+    LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::boolean;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+
 CREATE OR REPLACE FUNCTION multi_replace(value text, VARIADIC arr text[]) RETURNS text
     LANGUAGE plpgsql
 AS
@@ -192,7 +229,7 @@ END;
 $$;
 
 
---ALTER SCHEMA staging RENAME TO staging_bck;
+ALTER SCHEMA staging RENAME TO staging_bck;
 
 DROP SCHEMA IF EXISTS staging CASCADE;
 CREATE SCHEMA staging;
@@ -261,6 +298,56 @@ CREATE TYPE staging.retailer_data AS
     "fulfilParty"          text,
     "amazonFulfilParty"    text,
     "amazonSell"           text
+);
+DROP TYPE IF EXISTS staging.t_promotion_pp CASCADE;
+CREATE TYPE staging.t_promotion_pp AS
+(
+    promo_id          text,
+    promo_type        text,
+    promo_description text,
+    multibuy_price    text
+);
+DROP TYPE IF EXISTS staging.retailer_data_pp;
+CREATE TYPE staging.retailer_data_pp AS
+(
+    DATE                DATE,
+    retailer            TEXT,
+    "countryCode"       TEXT,
+    "currency"          TEXT,
+
+    "sourceId"          TEXT,
+
+
+    ean                 TEXT,
+
+    "brand"             TEXT,
+    "title"             TEXT,
+
+    "shelfPrice"        TEXT,--double precision,
+    "wasPrice"          TEXT,--double precision,
+    "cardPrice"         TEXT,--double precision,
+    "inStock"           TEXT,--boolean,
+    "onPromo"           TEXT,--boolean,
+
+    "promoData"         staging.t_promotion_pp[],
+
+    "skuURL"            TEXT,
+    "imageURL"          TEXT,
+
+
+    "bundled"           TEXT,--boolean,
+    "masterSku"         TEXT,--boolean
+    shop                text,
+    "amazonShop"        text,
+    choice              text,
+    "amazonChoice"      text,
+    "lowStock"          boolean,
+    "sellParty"         text,
+    "amazonSellParty"   text,
+    sell                text,
+    "fulfilParty"       text,
+    "amazonFulfilParty" text,
+    "amazonSell"        text
 );
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
@@ -524,8 +611,7 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreProductBarcodes
     test_run_id     integer,
     id              integer,
     "coreProductId" integer,
-    barcode         varchar(255)
-        UNIQUE,
+    barcode         varchar(255),
     "createdAt"     timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"     timestamp WITH TIME ZONE NOT NULL
 );
@@ -704,44 +790,80 @@ CREATE TABLE IF NOT EXISTS staging.debug_coreProductSourceCategories
     "createdAt"        timestamp WITH TIME ZONE NOT NULL,
     "updatedAt"        timestamp WITH TIME ZONE NOT NULL
 );
-
+DROP TABLE IF EXISTS staging.retailer_daily_data;
 CREATE TABLE staging.retailer_daily_data
 (
-    fetched_data json,
-    flag         text,
-    created_at   timestamp WITH TIME ZONE DEFAULT NOW()
+    debug_test_run_id serial,
+    fetched_data      json,
+    flag              text,
+    created_at        timestamp WITH TIME ZONE DEFAULT NOW()
+);
+DROP TABLE IF EXISTS staging.debug_errors;
+CREATE TABLE staging.debug_errors
+(
+    id                SERIAL,
+    debug_test_run_id integer,
+    sql_state         TEXT,
+    message           TEXT,
+    detail            TEXT,
+    hint              TEXT,
+    context           TEXT,
+    fetched_data      json,
+    flag              text,
+    created_at        timestamp DEFAULT NOW()
 );
 
 DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data(value json, flag text DEFAULT NULL::text) RETURNS void
-    LANGUAGE plpgsql
-AS
-$$
-BEGIN
-
-    INSERT INTO staging.retailer_daily_data (fetched_data, flag)
-    VALUES (value, flag);
-
-    IF flag = 'create-products' THEN
-        PERFORM staging.load_retailer_data_base(value);
-    ELSEIF flag = 'create-products-pp' THEN
-        PERFORM staging.load_retailer_data_pp(value);
-    END IF;
-
-    RETURN;
-END;
-$$;
-
-DROP FUNCTION IF EXISTS staging.load_retailer_data_pp(json);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json) RETURNS void
+CREATE OR REPLACE FUNCTION staging.load_retailer_data(fetched_data json, flag text DEFAULT NULL::text) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
 DECLARE
-    dd_date           date;
-    dd_date_id        integer;
-    dd_retailer       retailers;
-    debug_test_run_id integer;
+    _sql_state         TEXT;
+    _message           TEXT;
+    _detail            TEXT;
+    _hint              TEXT;
+    _context           TEXT;
+    _debug_test_run_id integer;
+BEGIN
+
+    INSERT INTO staging.retailer_daily_data (fetched_data, flag)
+    VALUES (fetched_data, flag)
+    RETURNING debug_test_run_id INTO _debug_test_run_id;
+
+    IF flag = 'create-products' THEN
+        PERFORM staging.load_retailer_data_base(fetched_data, _debug_test_run_id);
+    ELSEIF flag = 'create-products-pp' THEN
+        PERFORM staging.load_retailer_data_pp(fetched_data, _debug_test_run_id);
+    ELSE
+        RAISE EXCEPTION 'no flag provided';
+    END IF;
+
+    RETURN;
+EXCEPTION
+    WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS
+            _sql_state := RETURNED_SQLSTATE,
+            _message := MESSAGE_TEXT,
+            _detail := PG_EXCEPTION_DETAIL,
+            _hint := PG_EXCEPTION_HINT,
+            _context := PG_EXCEPTION_CONTEXT;
+
+        INSERT INTO staging.debug_errors (debug_test_run_id, sql_state, message, detail, hint, context, fetched_data,
+                                          flag)
+        VALUES (_debug_test_run_id, _sql_state, _message, _detail, _hint, _context, fetched_data, flag);
+END
+$$;
+
+DROP FUNCTION IF EXISTS staging.load_retailer_data_pp(json, integer);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json, debug_test_run_id integer DEFAULT NULL) RETURNS void
+    LANGUAGE plpgsql
+AS
+$$
+DECLARE
+    dd_date     date;
+    dd_date_id  integer;
+    dd_retailer retailers;
 BEGIN
 
     dd_date := value #> '{products,0,date}';
@@ -762,18 +884,18 @@ BEGIN
     ON CONFLICT DO NOTHING
     RETURNING id INTO dd_date_id;
 
-    INSERT INTO staging.debug_test_run(data,
+    INSERT INTO staging.debug_test_run(id, data,
                                        flag,
                                        dd_date,
                                        dd_retailer,
                                        dd_date_id)
-    SELECT value,
+    SELECT debug_test_run_id,
+           value,
            'create-products-pp' AS flag,
            dd_date,
            dd_retailer,
-           dd_date_id
-    RETURNING id INTO debug_test_run_id;
-
+           dd_date_id;
+    DROP TABLE IF EXISTS tmp_product_pp;
     CREATE TEMPORARY TABLE tmp_product_pp ON COMMIT DROP AS
     WITH /*prod_brand AS (SELECT id                        AS "brandId",
                                name,
@@ -824,21 +946,21 @@ BEGIN
                                      ROW_NUMBER() OVER (PARTITION BY "sourceId")         AS rownum -- use only the first sourceId record
                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
                                                            value #> '{products}') AS product),
-        dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice") AS "originalPrice",
-                               "shelfPrice"                       AS "productPrice",
+        dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice")        AS "originalPrice",
+                               "shelfPrice"                              AS "productPrice",
                                "shelfPrice",
-                               COALESCE("brand", '')              AS "productBrand",
+                               COALESCE("brand", '')                     AS "productBrand",
 
-                               'listing'                          AS status,
+                               'listing'                                 AS status,
 
-                               COALESCE("title", '')              AS "productTitle",
-                               COALESCE("imageURL", '')           AS "productImage",
-                               COALESCE("inStock", TRUE)          AS "productInStock",
+                               COALESCE("title", '')                     AS "productTitle",
+                               COALESCE("imageURL", '')                  AS "productImage",
+                               COALESCE("inStock", TRUE)                 AS "productInStock",
 
                                date,
                                "countryCode",
                                "currency",
-                               ean,
+                               CASE WHEN ean = '' THEN NULL ELSE ean END AS ean,
                                "brand",
                                "title",
                                href,
@@ -862,7 +984,7 @@ BEGIN
                                "amazonFulfilParty",
                                "amazonSell",
 
-                               ROW_NUMBER() OVER ()               AS index
+                               ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
 
                         WHERE rownum = 1)
@@ -952,15 +1074,24 @@ BEGIN
              CROSS JOIN LATERAL
         (
         SELECT CASE
+                   /*
+                       Matt (5/13/2024) :https://brand-nudge-group.slack.com/archives/C068Y51TS6L/p1715604955904309?thread_ts=1715603977.153229&cid=C068Y51TS6L
+                       if ean is NULL or “” then we will send either <sourceId> as <ean> or <retailer>_<sourceId> as <ean>.
+                   */
+                   WHEN dd_products.ean IS NULL THEN ARRAY [dd_products."sourceId"]:: TEXT[]
                    WHEN
                        dd_products."productOptions"
                        THEN ARRAY [ dd_retailer.name || '_' || dd_products."sourceId"] :: TEXT[]
                    ELSE
                        STRING_TO_ARRAY(dd_products.ean, ',') END AS "EANs"
         ) AS trsf_ean
-             CROSS JOIN LATERAL ( SELECT trsf_ean."EANs"[1]                                                 AS ean,
-                                         trsf_ean."EANs"[1] !~
-                                         '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$' AS "eanIssues"
+             CROSS JOIN LATERAL ( SELECT trsf_ean."EANs"[1]         AS ean,
+                                         CASE
+                                             WHEN dd_products.ean IS NULL THEN TRUE
+                                             ELSE
+                                                 COALESCE(trsf_ean."EANs"[1] !~
+                                                          '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$|\S+_[\d\-_]+$',
+                                                          TRUE) END AS "eanIssues"
         ) AS checkEAN
              CROSS JOIN LATERAL ( SELECT ARRAY_AGG(
                                                  (
@@ -1005,7 +1136,7 @@ BEGIN
                                   lat_promo_id."promoId",
                                   promo.description,
                                   promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
-                                  fn_to_float(promo."multibuyPrice")                      AS "multibuyPrice",
+                                  promo."multibuyPrice"                                   AS "multibuyPrice",
 
                                   COALESCE(ret_promo."retailerPromotionId",
                                            default_ret_promo."retailerPromotionId")       AS "retailerPromotionId",
@@ -1112,18 +1243,19 @@ BEGIN
 
     /*  createCoreBy    */
     WITH coreProductData AS (SELECT ean,
-                                    "productTitle"                    AS title,
-                                    "productImage"                    AS image,
+                                    "productTitle"                       AS title,
+                                    LEFT("productImage", 255)            AS image,
                                     "brandId",
                                     bundled,
                                     "secondaryImages",
-                                    "productDescription"              AS description,
+                                    "productDescription"                 AS description,
                                     features,
-                                    "productInfo"                     AS ingredients,
+                                    "productInfo"                        AS ingredients,
                                     size,
-                                    nutritional                       AS specification,
-                                    COALESCE("productOptions", FALSE) AS "productOptions",
-                                    "eanIssues"
+                                    nutritional                          AS specification,
+                                    COALESCE("productOptions", FALSE)    AS "productOptions",
+                                    "eanIssues",
+                                    ROW_NUMBER() OVER (PARTITION BY ean) AS row_num
                              FROM tmp_product_pp),
          ins_coreProducts AS (
              INSERT
@@ -1166,6 +1298,7 @@ BEGIN
                             --reviewed,
                             "productOptions"
                      FROM coreProductData
+                     WHERE row_num = 1
                      ON CONFLICT (ean) DO UPDATE
                          SET disabled = FALSE,
                              "productOptions" = excluded."productOptions",
@@ -1209,7 +1342,7 @@ BEGIN
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-09'
+                 WHERE "createdAt" >= '2024-05-13'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -1324,7 +1457,7 @@ BEGIN
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*),
@@ -1374,6 +1507,7 @@ BEGIN
 
 
     /*  setCoreRetailer */
+    DROP TABLE IF EXISTS tmp_coreRetailer;
     CREATE TEMPORARY TABLE tmp_coreRetailer ON COMMIT DROP AS
     WITH ins_coreRetailers AS (
         INSERT INTO "coreRetailers" ("coreProductId",
@@ -1447,7 +1581,7 @@ BEGIN
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO
                     UPDATE
                     SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
@@ -1486,7 +1620,7 @@ BEGIN
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -1522,8 +1656,8 @@ BEGIN
 END ;
 $$;
 
-DROP FUNCTION IF EXISTS staging.load_retailer_data_base(json);
-CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json) RETURNS void
+DROP FUNCTION IF EXISTS staging.load_retailer_data_base(json, integer);
+CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json, debug_test_run_id integer DEFAULT NULL) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
@@ -1533,12 +1667,12 @@ DECLARE
     dd_sourceCategoryType text;
     dd_date_id            integer;
     dd_retailer           retailers;
-    debug_test_run_id     integer;
 BEGIN
     /*
     INSERT INTO staging.retailer_daily_data (fetched_data)
     VALUES (value);
     */
+    DROP TABLE IF EXISTS tmp_daily_data;
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
     SELECT product.retailer,
            ean,
@@ -1620,21 +1754,22 @@ BEGIN
         INSERT INTO retailers (name, "countryId") VALUES (dd_source_type, 1) RETURNING * INTO dd_retailer; /*   1-GB */
     END IF;
 
-    INSERT INTO staging.debug_test_run(data,
+    INSERT INTO staging.debug_test_run(id,
+                                       data,
                                        flag,
                                        dd_date,
                                        dd_retailer,
                                        dd_date_id,
                                        dd_source_type,
                                        dd_sourceCategoryType)
-    SELECT value,
+    SELECT debug_test_run_id,
+           value,
            'create-products' AS flag,
            dd_date,
            dd_retailer,
            dd_date_id,
            dd_source_type,
-           dd_sourceCategoryType
-    RETURNING id INTO debug_test_run_id;
+           dd_sourceCategoryType;
 
     /*  create the new categories   */
     WITH product_categ AS (SELECT DISTINCT category              AS name,
@@ -1653,25 +1788,25 @@ BEGIN
     SELECT debug_test_run_id, *
     FROM debug_ins_sourceCategories;
 
-
+    DROP TABLE IF EXISTS tmp_product;
     CREATE TEMPORARY TABLE tmp_product ON COMMIT DROP AS
     WITH prod_categ AS (SELECT id AS "sourceCategoryId", name AS category
                         FROM "sourceCategories"
                         WHERE type = dd_sourceCategoryType),
          prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
-         daily_data AS (SELECT NULL::integer                        AS id,
-                               NULL::integer                        AS "coreProductId",
-                               NULL::integer                        AS "parentCategory", -- TO DO
+         daily_data AS (SELECT NULL::integer                               AS id,
+                               NULL::integer                               AS "coreProductId",
+                               NULL::integer                               AS "parentCategory", -- TO DO
 
                                promotions,
                                "productPrice",
                                "originalPrice",
-                               "originalPrice"                      AS "basePrice",
-                               "originalPrice"                      AS "shelfPrice",
-                               "originalPrice"                      AS "promotedPrice",
-                               dd_retailer.id                       AS "retailerId",
-                               dd_date_id                           AS "dateId",
-                               NOT (NOT featured)                   AS featured,
+                               "originalPrice"                             AS "basePrice",
+                               "originalPrice"                             AS "shelfPrice",
+                               "originalPrice"                             AS "promotedPrice",
+                               dd_retailer.id                              AS "retailerId",
+                               dd_date_id                                  AS "dateId",
+                               NOT (NOT featured)                          AS featured,
                                "bundled",
                                "category",
                                "categoryType",
@@ -1703,7 +1838,7 @@ BEGIN
                                "sizeUnit",
                                "sourceId",
                                "sourceType",
-                               COALESCE("taxonomyId", 0)            AS "taxonomyId",
+                               COALESCE("taxonomyId", 0)                   AS "taxonomyId",
                                "sourceCategoryId",
                                "brandId",
                                "productOptions",
@@ -1720,7 +1855,7 @@ BEGIN
                                "fulfilParty",
                                "amazonFulfilParty",
                                status,
-                               ROW_NUMBER() OVER (PARTITION BY ean) AS rownum
+                               ROW_NUMBER() OVER (PARTITION BY "sourceId") AS rownum
 /*
 TO DO
     if (
@@ -1975,18 +2110,19 @@ TO DO
     */
     /*  createCoreBy    */
     WITH coreProductData AS (SELECT ean,
-                                    "productTitle"                    AS title,
-                                    "productImage"                    AS image,
+                                    "productTitle"                       AS title,
+                                    LEFT("productImage", 255)            AS image,
                                     "brandId",
                                     bundled,
                                     "secondaryImages",
-                                    "productDescription"              AS description,
+                                    "productDescription"                 AS description,
                                     features,
-                                    "productInfo"                     AS ingredients,
+                                    "productInfo"                        AS ingredients,
                                     size,
-                                    nutritional                       AS specification,
-                                    COALESCE("productOptions", FALSE) AS "productOptions",
-                                    "eanIssues"
+                                    nutritional                          AS specification,
+                                    COALESCE("productOptions", FALSE)    AS "productOptions",
+                                    "eanIssues",
+                                    ROW_NUMBER() OVER (PARTITION BY ean) AS row_num
                              FROM tmp_product),
          ins_coreProducts AS (
              INSERT
@@ -2029,6 +2165,7 @@ TO DO
                             --reviewed,
                             "productOptions"
                      FROM coreProductData
+                     WHERE row_num = 1
                      ON CONFLICT (ean) DO UPDATE
                          SET disabled = FALSE,
                              "productOptions" = excluded."productOptions",
@@ -2073,7 +2210,7 @@ TO DO
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-09'
+                 WHERE "createdAt" >= '2024-05-13'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -2188,19 +2325,17 @@ TO DO
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
-            RETURNING products.*),
+            RETURNING *),
          debug_ins_products AS (
              INSERT INTO staging.debug_products
                  SELECT debug_test_run_id, * FROM ins_products)
     UPDATE tmp_product
     SET id=ins_products.id
     FROM ins_products
-    WHERE tmp_product."sourceId" = ins_products."sourceId"
-      AND tmp_product."retailerId" = ins_products."retailerId"
-      AND tmp_product."dateId" = ins_products."dateId";
+    WHERE tmp_product."sourceId" = ins_products."sourceId";
 
 
     /*  createProductsData  */
@@ -2272,6 +2407,7 @@ TO DO
 
 
     /*  setCoreRetailer */
+    DROP TABLE IF EXISTS tmp_coreRetailer;
     CREATE TEMPORARY TABLE tmp_coreRetailer ON COMMIT DROP AS
     WITH ins_coreRetailers AS (
         INSERT INTO "coreRetailers" ("coreProductId",
@@ -2321,7 +2457,7 @@ TO DO
                  INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
         ON CONFLICT ("coreRetailerId",
             "retailerTaxonomyId")
-            WHERE "createdAt" >= '2024-05-09'
+            WHERE "createdAt" >= '2024-05-13'
             DO NOTHING
         RETURNING "coreRetailerTaxonomies".*)
     INSERT
@@ -2372,7 +2508,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO
                     UPDATE
                     SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
@@ -2411,7 +2547,7 @@ TO DO
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -2456,7 +2592,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
             ON CONFLICT ("coreProductId", "sourceCategoryId")
-                WHERE "createdAt" >= '2024-05-09'
+                WHERE "createdAt" >= '2024-05-13'
                 DO NOTHING
             RETURNING "coreProductSourceCategories".*)
     INSERT
