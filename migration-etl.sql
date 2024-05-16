@@ -2,13 +2,13 @@
 DROP INDEX IF EXISTS coreProductCountryData_coreProductId_countryId_key;
 CREATE UNIQUE INDEX IF NOT EXISTS coreProductCountryData_coreProductId_countryId_key
     ON "coreProductCountryData" ("coreProductId", "countryId")
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 
 /*  temporary solution for fix_dup_products  */
 DROP INDEX IF EXISTS products_sourceId_retailerId_dateId_key;
 CREATE UNIQUE INDEX IF NOT EXISTS products_sourceId_retailerId_dateId_key
     ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 -- duplicates till last day.
 -- WHERE  "dateId">18166;
 
@@ -16,22 +16,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS products_sourceId_retailerId_dateId_key
 DROP INDEX IF EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq;
 CREATE UNIQUE INDEX IF NOT EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
     ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-05-16';-- WHERE  "dateId">18166;
+    WHERE "createdAt" >= '2024-05-17';-- WHERE  "dateId">18166;
 
 DROP INDEX IF EXISTS coreProductSourceCategories_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS coreProductSourceCategories_uq_key
     ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 
 DROP INDEX IF EXISTS aggregatedProducts_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS aggregatedProducts_uq_key
     ON "aggregatedProducts" ("productId")
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 
 DROP INDEX IF EXISTS dates_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS dates_uq_key
     ON "dates" ("date")
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 
 DROP INDEX IF EXISTS promotions_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
@@ -42,7 +42,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
     promoId is an actual promotion id
     TO BE CHECKED if is unique and not null
 */
-    WHERE "createdAt" >= '2024-05-16';
+    WHERE "createdAt" >= '2024-05-17';
 
 
 CREATE EXTENSION IF NOT EXISTS plv8;
@@ -1342,7 +1342,7 @@ BEGIN
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-16'
+                 WHERE "createdAt" >= '2024-05-17'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -1457,7 +1457,7 @@ BEGIN
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*),
@@ -1581,7 +1581,7 @@ BEGIN
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO
                     UPDATE
                     SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
@@ -1620,7 +1620,7 @@ BEGIN
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -1670,6 +1670,13 @@ DECLARE
 BEGIN
 
     IF value::text = '[]' THEN
+        INSERT INTO staging.debug_test_run(id,
+                                           data,
+                                           flag)
+        SELECT debug_test_run_id,
+               value,
+               'create-products' AS flag;
+
         RETURN;
     END IF;
 
@@ -2213,7 +2220,7 @@ TO DO
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-16'
+                 WHERE "createdAt" >= '2024-05-17'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -2328,7 +2335,7 @@ TO DO
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING *),
@@ -2460,7 +2467,7 @@ TO DO
                  INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
         ON CONFLICT ("coreRetailerId",
             "retailerTaxonomyId")
-            WHERE "createdAt" >= '2024-05-16'
+            WHERE "createdAt" >= '2024-05-17'
             DO NOTHING
         RETURNING "coreRetailerTaxonomies".*)
     INSERT
@@ -2511,7 +2518,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO
                     UPDATE
                     SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
@@ -2550,7 +2557,7 @@ TO DO
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -2595,7 +2602,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
             ON CONFLICT ("coreProductId", "sourceCategoryId")
-                WHERE "createdAt" >= '2024-05-16'
+                WHERE "createdAt" >= '2024-05-17'
                 DO NOTHING
             RETURNING "coreProductSourceCategories".*)
     INSERT
