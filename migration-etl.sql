@@ -35,7 +35,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS dates_uq_key
 
 DROP INDEX IF EXISTS promotions_uq_key;
 CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
-    ON promotions ("productId", "promoId") -- added retailerPromotionId for multiple active promotions per productId
+    ON promotions ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate") -- added retailerPromotionId for multiple active promotions per productId
 /*
     retailerPromotionId is the retailers regexp/mechanicId key
 
@@ -1580,13 +1580,11 @@ BEGIN
                    "promoId"
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
-            ON CONFLICT ("productId", "promoId")
+            ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
                 WHERE "createdAt" >= '2024-05-17'
                 DO
                     UPDATE
-                    SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
-                        "endDate" = GREATEST(promotions."endDate", excluded."endDate"),
-                        "updatedAt" = excluded."updatedAt"
+                    SET "updatedAt" = excluded."updatedAt"
             RETURNING promotions.*)
     INSERT
     INTO staging.debug_promotions
@@ -2517,13 +2515,11 @@ TO DO
                    "promoId"
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
-            ON CONFLICT ("productId", "promoId")
+            ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
                 WHERE "createdAt" >= '2024-05-17'
                 DO
                     UPDATE
-                    SET "startDate" = LEAST(promotions."startDate", excluded."startDate"),
-                        "endDate" = GREATEST(promotions."endDate", excluded."endDate"),
-                        "updatedAt" = excluded."updatedAt"
+                    SET "updatedAt" = excluded."updatedAt"
             RETURNING promotions.*)
     INSERT
     INTO staging.debug_promotions
