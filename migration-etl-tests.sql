@@ -65,3 +65,4 @@ CREATE TABLE staging.sample_non_pp AS
 SELECT fetched_data, *
 FROM staging.debug_errors
 WHERE id = 19;
+
