@@ -374,249 +374,29 @@ CREATE TABLE IF NOT EXISTS staging.debug_test_run
     dd_source_type        text,
     dd_sourceCategoryType text
 );
-DROP TABLE IF EXISTS staging.debug_tmp_product_pp;
-CREATE TABLE staging.debug_tmp_product_pp
+DROP TABLE IF EXISTS staging.debug_errors;
+CREATE TABLE staging.debug_errors
 (
-    test_run_id            integer,
-    id                     integer,
-    "sourceType"           varchar(255),
-    ean                    text,
-    "promotionDescription" text,
-    features               text,
-    date                   date,
-    "sourceId"             text,
-    "productBrand"         text,
-    "productTitle"         text,
-    "productImage"         text,
-    "secondaryImages"      boolean,
-    "productDescription"   text,
-    "productInfo"          text,
-    "promotedPrice"        double precision,
-    "productInStock"       boolean,
-    "productInListing"     boolean,
-    "reviewsCount"         integer,
-    "reviewsStars"         double precision,
-    "eposId"               text,
-    multibuy               boolean,
-    "coreProductId"        integer,
-    "retailerId"           integer,
-    "createdAt"            timestamp WITH TIME ZONE,
-    "updatedAt"            timestamp WITH TIME ZONE,
-    "imageId"              text,
-    size                   text,
-    "pricePerWeight"       text,
-    href                   text,
-    nutritional            text,
-    "basePrice"            double precision,
-    "shelfPrice"           double precision,
-    "productTitleDetail"   text,
-    "sizeUnit"             text,
-    "dateId"               integer,
-    "countryCode"          text,
-    currency               text,
-    "cardPrice"            double precision,
-    "onPromo"              boolean,
-    bundled                boolean,
-    "originalPrice"        double precision,
-    "productPrice"         double precision,
-    status                 text,
-    "productOptions"       boolean,
-    shop                   text,
-    "amazonShop"           text,
-    choice                 text,
-    "amazonChoice"         text,
-    "lowStock"             boolean,
-    "sellParty"            text,
-    "amazonSellParty"      text,
-    sell                   text,
-    "fulfilParty"          text,
-    "amazonFulfilParty"    text,
-    "amazonSell"           text,
-    "eanIssues"            boolean,
-    screenshot             text,
-    "brandId"              integer,
-    dd_ranking             "productsData",
-    "EANs"                 text[],
-    promotions             staging.t_promotion_mb[]
+    id                SERIAL,
+    debug_test_run_id integer,
+    sql_state         TEXT,
+    message           TEXT,
+    detail            TEXT,
+    hint              TEXT,
+    context           TEXT,
+    fetched_data      json,
+    flag              text,
+    created_at        timestamp DEFAULT NOW()
 );
-DROP TABLE IF EXISTS staging.debug_amazonProducts;
-CREATE TABLE IF NOT EXISTS staging.debug_amazonProducts
+DROP TABLE IF EXISTS staging.retailer_daily_data;
+CREATE TABLE staging.retailer_daily_data
 (
-    test_run_id   integer,
-    id            integer,
-    "productId"   integer,
-    shop          varchar(255)             NOT NULL,
-    choice        varchar(255),
-    "lowStock"    boolean DEFAULT FALSE,
-    "sellParty"   varchar(255),
-    sell          varchar(255),
-    "fulfilParty" varchar(255),
-    "createdAt"   timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"   timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_coreRetailers;
-CREATE TABLE IF NOT EXISTS staging.debug_coreRetailers
-(
-    test_run_id     integer,
-    id              integer,
-    "coreProductId" integer,
-    "retailerId"    integer,
-    "productId"     varchar(255),
-    "createdAt"     timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"     timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_productStatuses;
-CREATE TABLE IF NOT EXISTS staging.debug_productStatuses
-(
-    test_run_id integer,
-    id          integer,
-    "productId" integer,
-    status      varchar(255),
-    screenshot  varchar(255),
-    "createdAt" timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt" timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_promotions;
-CREATE TABLE IF NOT EXISTS staging.debug_promotions
-(
-    test_run_id           integer,
-    id                    integer,
-    "retailerPromotionId" integer,
-    "productId"           integer,
-    description           text DEFAULT ''::text    NOT NULL,
-    "startDate"           varchar(255),
-    "endDate"             varchar(255),
-    "createdAt"           timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"           timestamp WITH TIME ZONE NOT NULL,
-    "promoId"             varchar(255)
-);
-DROP TABLE IF EXISTS staging.debug_aggregatedProducts;
-CREATE TABLE IF NOT EXISTS staging.debug_aggregatedProducts
-(
-    test_run_id   integer,
-    id            integer,
-    "titleMatch"  varchar(255),
-    "productId"   integer,
-    "createdAt"   timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"   timestamp WITH TIME ZONE NOT NULL,
-    features      varchar(255),
-    specification varchar(255) DEFAULT '0'::character varying,
-    size          varchar(255) DEFAULT '0'::character varying,
-    description   varchar(255) DEFAULT '0'::character varying,
-    ingredients   varchar(255) DEFAULT '0'::character varying,
-    "imageMatch"  varchar(255) DEFAULT '0'::character varying
-);
-DROP TABLE IF EXISTS staging.debug_coreRetailerDates;
-CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerDates
-(
-    test_run_id      integer,
-    id               integer,
-    "coreRetailerId" integer,
-    "dateId"         integer,
-    "createdAt"      timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"      timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_products;
-CREATE TABLE IF NOT EXISTS staging.debug_products
-(
-    test_run_id            integer,
-    id                     integer,
-    "sourceType"           varchar(255),
-    ean                    varchar(255),
-    promotions             boolean,
-    "promotionDescription" text,
-    features               text,
-    date                   timestamp WITH TIME ZONE NOT NULL,
-    "sourceId"             varchar(255),
-    "productBrand"         varchar(255),
-    "productTitle"         varchar(255),
-    "productImage"         text,
-    "secondaryImages"      boolean      DEFAULT FALSE,
-    "productDescription"   text,
-    "productInfo"          text,
-    "promotedPrice"        varchar(255),
-    "productInStock"       boolean      DEFAULT TRUE,
-    "productInListing"     boolean      DEFAULT FALSE,
-    "reviewsCount"         varchar(255),
-    "reviewsStars"         varchar(255),
-    "eposId"               varchar(255),
-    multibuy               boolean      DEFAULT FALSE,
-    "coreProductId"        integer                  NOT NULL,
-    "retailerId"           integer,
-    "createdAt"            timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"            timestamp WITH TIME ZONE NOT NULL,
-    "imageId"              integer,
-    size                   varchar(255) DEFAULT NULL::character varying,
-    "pricePerWeight"       varchar(255) DEFAULT NULL::character varying,
-    href                   text,
-    nutritional            text         DEFAULT NULL::character varying,
-    "basePrice"            varchar(255),
-    "shelfPrice"           varchar(255),
-    "productTitleDetail"   varchar(255),
-    "sizeUnit"             varchar(255),
-    "dateId"               integer
-);
-DROP TABLE IF EXISTS staging.debug_coreProducts;
-CREATE TABLE IF NOT EXISTS staging.debug_coreProducts
-(
-    test_run_id       integer,
-    id                integer,
-
-    ean               varchar(255),
-    title             varchar(255),
-    image             varchar(255),
-    "secondaryImages" boolean,
-    description       text,
-    features          text,
-    ingredients       text,
-    "brandId"         integer,
-    "categoryId"      integer,
-    "productGroupId"  integer,
-    "createdAt"       timestamp WITH TIME ZONE   NOT NULL,
-    "updatedAt"       timestamp WITH TIME ZONE   NOT NULL,
-    bundled           boolean      DEFAULT FALSE,
-    disabled          boolean      DEFAULT FALSE NOT NULL,
-    "eanIssues"       boolean      DEFAULT FALSE NOT NULL,
-    specification     text,
-    size              varchar(255) DEFAULT '0'::character varying,
-    reviewed          boolean      DEFAULT FALSE NOT NULL,
-    "productOptions"  boolean      DEFAULT FALSE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_coreProductCountryData;
-CREATE TABLE IF NOT EXISTS staging.debug_coreProductCountryData
-(
-    test_run_id              integer,
-    id                       integer,
-
-    "coreProductId"          integer,
-    "countryId"              integer,
-    title                    varchar(255),
-    image                    varchar(255),
-    description              text,
-    features                 text,
-    ingredients              text,
-    specification            text,
-    "createdAt"              timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"              timestamp WITH TIME ZONE NOT NULL,
-    "secondaryImages"        varchar(255),
-    bundled                  boolean,
-    disabled                 boolean,
-    reviewed                 boolean,
-    "ownLabelManufacturerId" integer,
-    "brandbankManaged"       boolean DEFAULT FALSE
-);
-DROP TABLE IF EXISTS staging.debug_coreProductBarcodes;
-CREATE TABLE IF NOT EXISTS staging.debug_coreProductBarcodes
-(
-    test_run_id     integer,
-    id              integer,
-    "coreProductId" integer,
-    barcode         varchar(255),
-    "createdAt"     timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"     timestamp WITH TIME ZONE NOT NULL
+    debug_test_run_id serial,
+    fetched_data      json,
+    flag              text,
+    created_at        timestamp WITH TIME ZONE DEFAULT NOW()
 );
 
-/*  non pp debug tables */
 DROP TABLE IF EXISTS staging.debug_tmp_daily_data;
 CREATE TABLE IF NOT EXISTS staging.debug_tmp_daily_data
 (
@@ -731,87 +511,88 @@ CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
     screenshot           text,
     ranking_data         "productsData"[]
 );
-DROP TABLE IF EXISTS staging.debug_retailers;
-CREATE TABLE IF NOT EXISTS staging.debug_retailers
+DROP TABLE IF EXISTS staging.debug_tmp_product_pp;
+CREATE TABLE staging.debug_tmp_product_pp
 (
-    test_run_id integer,
-    id          integer,
-    name        varchar(255),
-    "createdAt" timestamp WITH TIME ZONE                          NOT NULL,
-    "updatedAt" timestamp WITH TIME ZONE                          NOT NULL,
-    color       varchar(255) DEFAULT '#ffffff'::character varying NOT NULL,
-    logo        varchar(255),
-    "countryId" integer
+    test_run_id            integer,
+    id                     integer,
+    "sourceType"           varchar(255),
+    ean                    text,
+    "promotionDescription" text,
+    features               text,
+    date                   date,
+    "sourceId"             text,
+    "productBrand"         text,
+    "productTitle"         text,
+    "productImage"         text,
+    "secondaryImages"      boolean,
+    "productDescription"   text,
+    "productInfo"          text,
+    "promotedPrice"        double precision,
+    "productInStock"       boolean,
+    "productInListing"     boolean,
+    "reviewsCount"         integer,
+    "reviewsStars"         double precision,
+    "eposId"               text,
+    multibuy               boolean,
+    "coreProductId"        integer,
+    "retailerId"           integer,
+    "createdAt"            timestamp WITH TIME ZONE,
+    "updatedAt"            timestamp WITH TIME ZONE,
+    "imageId"              text,
+    size                   text,
+    "pricePerWeight"       text,
+    href                   text,
+    nutritional            text,
+    "basePrice"            double precision,
+    "shelfPrice"           double precision,
+    "productTitleDetail"   text,
+    "sizeUnit"             text,
+    "dateId"               integer,
+    "countryCode"          text,
+    currency               text,
+    "cardPrice"            double precision,
+    "onPromo"              boolean,
+    bundled                boolean,
+    "originalPrice"        double precision,
+    "productPrice"         double precision,
+    status                 text,
+    "productOptions"       boolean,
+    shop                   text,
+    "amazonShop"           text,
+    choice                 text,
+    "amazonChoice"         text,
+    "lowStock"             boolean,
+    "sellParty"            text,
+    "amazonSellParty"      text,
+    sell                   text,
+    "fulfilParty"          text,
+    "amazonFulfilParty"    text,
+    "amazonSell"           text,
+    "eanIssues"            boolean,
+    screenshot             text,
+    "brandId"              integer,
+    dd_ranking             "productsData",
+    "EANs"                 text[],
+    promotions             staging.t_promotion_mb[]
 );
-DROP TABLE IF EXISTS staging.debug_sourceCategories;
-CREATE TABLE IF NOT EXISTS staging.debug_sourceCategories
-(
-    test_run_id integer,
-    id          integer,
-    name        varchar(255),
-    "createdAt" timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt" timestamp WITH TIME ZONE NOT NULL,
-    type        varchar(255)             NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_productsData;
-CREATE TABLE IF NOT EXISTS staging.debug_productsData
-(
-    test_run_id        integer,
-    id                 integer,
-    "productId"        integer,
-    category           varchar(255),
-    "categoryType"     varchar(255),
-    "parentCategory"   varchar(255),
-    "productRank"      integer,
-    "pageNumber"       varchar(255),
-    screenshot         varchar(255) DEFAULT ''::character varying,
-    "sourceCategoryId" integer,
-    featured           boolean      DEFAULT FALSE,
-    "featuredRank"     integer,
-    "taxonomyId"       integer      DEFAULT 0
-);
-DROP TABLE IF EXISTS staging.debug_coreRetailerTaxonomies;
-CREATE TABLE IF NOT EXISTS staging.debug_coreRetailerTaxonomies
-(
-    test_run_id          integer,
-    id                   integer,
-    "coreRetailerId"     integer,
-    "retailerTaxonomyId" integer,
-    "createdAt"          timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"          timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.debug_coreProductSourceCategories;
-CREATE TABLE IF NOT EXISTS staging.debug_coreProductSourceCategories
-(
-    test_run_id        integer,
-    id                 integer,
-    "coreProductId"    integer,
-    "sourceCategoryId" integer,
-    "createdAt"        timestamp WITH TIME ZONE NOT NULL,
-    "updatedAt"        timestamp WITH TIME ZONE NOT NULL
-);
-DROP TABLE IF EXISTS staging.retailer_daily_data;
-CREATE TABLE staging.retailer_daily_data
-(
-    debug_test_run_id serial,
-    fetched_data      json,
-    flag              text,
-    created_at        timestamp WITH TIME ZONE DEFAULT NOW()
-);
-DROP TABLE IF EXISTS staging.debug_errors;
-CREATE TABLE staging.debug_errors
-(
-    id                SERIAL,
-    debug_test_run_id integer,
-    sql_state         TEXT,
-    message           TEXT,
-    detail            TEXT,
-    hint              TEXT,
-    context           TEXT,
-    fetched_data      json,
-    flag              text,
-    created_at        timestamp DEFAULT NOW()
-);
+
+/*  tables tracking changes in public schema*/
+DROP TABLE IF EXISTS staging.debug_aggregatedproducts; CREATE TABLE staging.debug_aggregatedproducts (test_run_id integer, LIKE "aggregatedProducts");
+DROP TABLE IF EXISTS staging.debug_amazonproducts; CREATE TABLE staging.debug_amazonproducts (test_run_id integer, LIKE "amazonProducts");
+DROP TABLE IF EXISTS staging.debug_coreproductbarcodes; CREATE TABLE staging.debug_coreproductbarcodes (test_run_id integer, LIKE "coreProductBarcodes");
+DROP TABLE IF EXISTS staging.debug_coreproductcountrydata; CREATE TABLE staging.debug_coreproductcountrydata (test_run_id integer, LIKE "coreProductCountryData");
+DROP TABLE IF EXISTS staging.debug_coreproducts; CREATE TABLE staging.debug_coreproducts (test_run_id integer, LIKE "coreProducts");
+DROP TABLE IF EXISTS staging.debug_coreproductsourcecategories; CREATE TABLE staging.debug_coreproductsourcecategories (test_run_id integer, LIKE "coreProductSourceCategories");
+DROP TABLE IF EXISTS staging.debug_coreretailerdates; CREATE TABLE staging.debug_coreretailerdates (test_run_id integer, LIKE "coreRetailerDates");
+DROP TABLE IF EXISTS staging.debug_coreretailers; CREATE TABLE staging.debug_coreretailers (test_run_id integer, LIKE "coreRetailers");
+DROP TABLE IF EXISTS staging.debug_coreretailertaxonomies; CREATE TABLE staging.debug_coreretailertaxonomies (test_run_id integer, LIKE "coreRetailerTaxonomies");
+DROP TABLE IF EXISTS staging.debug_products; CREATE TABLE staging.debug_products (test_run_id integer, LIKE "products");
+DROP TABLE IF EXISTS staging.debug_productsdata; CREATE TABLE staging.debug_productsdata (test_run_id integer, LIKE "productsData");
+DROP TABLE IF EXISTS staging.debug_productstatuses; CREATE TABLE staging.debug_productstatuses (test_run_id integer, LIKE "productStatuses");
+DROP TABLE IF EXISTS staging.debug_promotions; CREATE TABLE staging.debug_promotions (test_run_id integer, LIKE "promotions");
+DROP TABLE IF EXISTS staging.debug_retailers; CREATE TABLE staging.debug_retailers (test_run_id integer, LIKE "retailers");
+DROP TABLE IF EXISTS staging.debug_sourcecategories; CREATE TABLE staging.debug_sourcecategories (test_run_id integer, LIKE "sourceCategories");
 
 DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(fetched_data json, flag text DEFAULT NULL::text) RETURNS void
