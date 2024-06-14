@@ -3,30 +3,56 @@ TRUNCATE staging.retailer_daily_data;
 TRUNCATE staging.debug_errors;
 TRUNCATE staging.debug_test_run;
 
-
 SELECT staging.load_retailer_data(fetched_data, flag)
 --SELECT *
 FROM staging.debug_errors
+
+
+
+UPDATE products
+SET "dateId"=24436
+WHERE "dateId" > 24436;
+UPDATE "coreRetailerDates"
+SET "dateId"=24436
+WHERE "dateId" > 24436;
+
+UPDATE dates
+SET "createdAt"=NOW(),
+    "updatedAt"=NOW()
+WHERE id = 24436;
+DELETE
+FROM dates
+WHERE id > 24436;
+
+UPDATE staging.debug_test_run
+SET dd_date_id=24436
+WHERE dd_date_id > 24436;
  */
+
+-- 24436 2024-06-13T16:33:48.739Z
+
+SELECT staging.load_retailer_data(fetched_data, flag)
+FROM staging.debug_errors
+WHERE debug_test_run_id > 2;
 
 SELECT *
 FROM dates
-WHERE id >= 24436
-ORDER BY "createdAt" DESC NULLS LAST
-LIMIT 10;
+WHERE id > 24436
+ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-ORDER BY "createdAt" DESC NULLS LAST
-LIMIT 10;
+WHERE id > 24436
+ORDER BY "createdAt" DESC NULLS LAST;
 
-SELECT DISTINCT "dateId"
+SELECT COUNT(*)
 FROM products
-WHERE "dateId" >= 24436;
+WHERE "dateId" > 24436;
 
-SELECT DISTINCT "dateId"
+SELECT COUNT(*)
 FROM prod_fdw.products
-WHERE "dateId" >= 24436;
+WHERE "dateId" > 24436;
+
 
 
 WITH prod_cnt AS (SELECT test_run_id AS debug_test_run_id, COUNT(*) AS product_count
@@ -78,10 +104,4 @@ FROM debug_errors
                          USING (debug_test_run_id)
 ORDER BY error_id;
 
-
-
-CREATE TABLE staging.sample_non_pp AS
-SELECT fetched_data, *
-FROM staging.debug_errors
-WHERE id = 19;
 
