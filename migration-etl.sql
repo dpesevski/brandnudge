@@ -1,49 +1,7 @@
-/*  temporary solution for fix_dup_coreProductCountryData_deleted_rec  */
-DROP INDEX IF EXISTS coreProductCountryData_coreProductId_countryId_key;
-CREATE UNIQUE INDEX IF NOT EXISTS coreProductCountryData_coreProductId_countryId_key
-    ON "coreProductCountryData" ("coreProductId", "countryId")
-    WHERE "createdAt" >= '2024-05-17';
-
-/*  temporary solution for fix_dup_products  */
-DROP INDEX IF EXISTS products_sourceId_retailerId_dateId_key;
-CREATE UNIQUE INDEX IF NOT EXISTS products_sourceId_retailerId_dateId_key
-    ON products ("sourceId", "retailerId", "dateId")
-    WHERE "createdAt" >= '2024-05-17';
--- duplicates till last day.
--- WHERE  "dateId">18166;
-
-/*  temporary solution for fix_dup_coreRetailerTaxonomies  */
-DROP INDEX IF EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq;
-CREATE UNIQUE INDEX IF NOT EXISTS coreRetailerTaxonomies_coreRetailerId_retailerTaxonomyId_uq
-    ON "coreRetailerTaxonomies" ("coreRetailerId", "retailerTaxonomyId")
-    WHERE "createdAt" >= '2024-05-17';-- WHERE  "dateId">18166;
-
-DROP INDEX IF EXISTS coreProductSourceCategories_uq_key;
-CREATE UNIQUE INDEX IF NOT EXISTS coreProductSourceCategories_uq_key
-    ON "coreProductSourceCategories" ("coreProductId", "sourceCategoryId")
-    WHERE "createdAt" >= '2024-05-17';
-
-DROP INDEX IF EXISTS aggregatedProducts_uq_key;
-CREATE UNIQUE INDEX IF NOT EXISTS aggregatedProducts_uq_key
-    ON "aggregatedProducts" ("productId")
-    WHERE "createdAt" >= '2024-05-17';
-
-DROP INDEX IF EXISTS dates_uq_key;
-CREATE UNIQUE INDEX IF NOT EXISTS dates_uq_key
-    ON "dates" ("date")
-    WHERE "createdAt" >= '2024-05-17';
-
-DROP INDEX IF EXISTS promotions_uq_key;
-CREATE UNIQUE INDEX IF NOT EXISTS promotions_uq_key
-    ON promotions ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate") -- added retailerPromotionId for multiple active promotions per productId
 /*
-    retailerPromotionId is the retailers regexp/mechanicId key
-
-    promoId is an actual promotion id
-    TO BE CHECKED if is unique and not null
+    UQ indexes are deployed in prod
+    with temporal condition on "createdAt" >= '2024-05-31 20:21:46.840963+00';
 */
-    WHERE "createdAt" >= '2024-05-17';
-
 
 CREATE EXTENSION IF NOT EXISTS plv8;
 DROP FUNCTION IF EXISTS compareTwoStrings(text, text);
@@ -51,8 +9,9 @@ CREATE OR REPLACE FUNCTION compareTwoStrings(title1 text, title2 text) RETURNS f
     LANGUAGE plv8
 AS
 $$
- const first = title1.replace(/\s+/g, '');
-    const second = title2.replace(/\s+/g, '');
+
+    const first = title1 ? title1.replace(/\s+/g, ''):'';
+    const second = title2 ? title2.replace(/\s+/g, ''):'';
 
     if (!first.length && !second.length) return 1;
     if (!first.length || !second.length) return 0;
@@ -578,21 +537,96 @@ CREATE TABLE staging.debug_tmp_product_pp
 );
 
 /*  tables tracking changes in public schema*/
-DROP TABLE IF EXISTS staging.debug_aggregatedproducts; CREATE TABLE staging.debug_aggregatedproducts (test_run_id integer, LIKE "aggregatedProducts");
-DROP TABLE IF EXISTS staging.debug_amazonproducts; CREATE TABLE staging.debug_amazonproducts (test_run_id integer, LIKE "amazonProducts");
-DROP TABLE IF EXISTS staging.debug_coreproductbarcodes; CREATE TABLE staging.debug_coreproductbarcodes (test_run_id integer, LIKE "coreProductBarcodes");
-DROP TABLE IF EXISTS staging.debug_coreproductcountrydata; CREATE TABLE staging.debug_coreproductcountrydata (test_run_id integer, LIKE "coreProductCountryData");
-DROP TABLE IF EXISTS staging.debug_coreproducts; CREATE TABLE staging.debug_coreproducts (test_run_id integer, LIKE "coreProducts");
-DROP TABLE IF EXISTS staging.debug_coreproductsourcecategories; CREATE TABLE staging.debug_coreproductsourcecategories (test_run_id integer, LIKE "coreProductSourceCategories");
-DROP TABLE IF EXISTS staging.debug_coreretailerdates; CREATE TABLE staging.debug_coreretailerdates (test_run_id integer, LIKE "coreRetailerDates");
-DROP TABLE IF EXISTS staging.debug_coreretailers; CREATE TABLE staging.debug_coreretailers (test_run_id integer, LIKE "coreRetailers");
-DROP TABLE IF EXISTS staging.debug_coreretailertaxonomies; CREATE TABLE staging.debug_coreretailertaxonomies (test_run_id integer, LIKE "coreRetailerTaxonomies");
-DROP TABLE IF EXISTS staging.debug_products; CREATE TABLE staging.debug_products (test_run_id integer, LIKE "products");
-DROP TABLE IF EXISTS staging.debug_productsdata; CREATE TABLE staging.debug_productsdata (test_run_id integer, LIKE "productsData");
-DROP TABLE IF EXISTS staging.debug_productstatuses; CREATE TABLE staging.debug_productstatuses (test_run_id integer, LIKE "productStatuses");
-DROP TABLE IF EXISTS staging.debug_promotions; CREATE TABLE staging.debug_promotions (test_run_id integer, LIKE "promotions");
-DROP TABLE IF EXISTS staging.debug_retailers; CREATE TABLE staging.debug_retailers (test_run_id integer, LIKE "retailers");
-DROP TABLE IF EXISTS staging.debug_sourcecategories; CREATE TABLE staging.debug_sourcecategories (test_run_id integer, LIKE "sourceCategories");
+DROP TABLE IF EXISTS staging.debug_aggregatedproducts;
+CREATE TABLE staging.debug_aggregatedproducts
+(
+    test_run_id integer,
+    LIKE "aggregatedProducts"
+);
+DROP TABLE IF EXISTS staging.debug_amazonproducts;
+CREATE TABLE staging.debug_amazonproducts
+(
+    test_run_id integer,
+    LIKE "amazonProducts"
+);
+DROP TABLE IF EXISTS staging.debug_coreproductbarcodes;
+CREATE TABLE staging.debug_coreproductbarcodes
+(
+    test_run_id integer,
+    LIKE "coreProductBarcodes"
+);
+DROP TABLE IF EXISTS staging.debug_coreproductcountrydata;
+CREATE TABLE staging.debug_coreproductcountrydata
+(
+    test_run_id integer,
+    LIKE "coreProductCountryData"
+);
+DROP TABLE IF EXISTS staging.debug_coreproducts;
+CREATE TABLE staging.debug_coreproducts
+(
+    test_run_id integer,
+    LIKE "coreProducts"
+);
+DROP TABLE IF EXISTS staging.debug_coreproductsourcecategories;
+CREATE TABLE staging.debug_coreproductsourcecategories
+(
+    test_run_id integer,
+    LIKE "coreProductSourceCategories"
+);
+DROP TABLE IF EXISTS staging.debug_coreretailerdates;
+CREATE TABLE staging.debug_coreretailerdates
+(
+    test_run_id integer,
+    LIKE "coreRetailerDates"
+);
+DROP TABLE IF EXISTS staging.debug_coreretailers;
+CREATE TABLE staging.debug_coreretailers
+(
+    test_run_id integer,
+    LIKE "coreRetailers"
+);
+DROP TABLE IF EXISTS staging.debug_coreretailertaxonomies;
+CREATE TABLE staging.debug_coreretailertaxonomies
+(
+    test_run_id integer,
+    LIKE "coreRetailerTaxonomies"
+);
+DROP TABLE IF EXISTS staging.debug_products;
+CREATE TABLE staging.debug_products
+(
+    test_run_id integer,
+    LIKE "products"
+);
+DROP TABLE IF EXISTS staging.debug_productsdata;
+CREATE TABLE staging.debug_productsdata
+(
+    test_run_id integer,
+    LIKE "productsData"
+);
+DROP TABLE IF EXISTS staging.debug_productstatuses;
+CREATE TABLE staging.debug_productstatuses
+(
+    test_run_id integer,
+    LIKE "productStatuses"
+);
+DROP TABLE IF EXISTS staging.debug_promotions;
+CREATE TABLE staging.debug_promotions
+(
+    test_run_id integer,
+    LIKE "promotions"
+);
+DROP TABLE IF EXISTS staging.debug_retailers;
+CREATE TABLE staging.debug_retailers
+(
+    test_run_id integer,
+    LIKE "retailers"
+);
+DROP TABLE IF EXISTS staging.debug_sourcecategories;
+CREATE TABLE staging.debug_sourcecategories
+(
+    test_run_id integer,
+    LIKE "sourceCategories"
+);
 
 DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(fetched_data json, flag text DEFAULT NULL::text) RETURNS void
@@ -659,10 +693,12 @@ BEGIN
     FROM JSON_POPULATE_RECORD(NULL::retailers,
                               value #> '{retailer}') AS retailer;
 
-
-    INSERT INTO dates (date)
-    VALUES (dd_date AT TIME ZONE 'UTC')
-    ON CONFLICT DO NOTHING
+    INSERT INTO dates (date, "createdAt", "updatedAt")
+    VALUES (dd_date AT TIME ZONE 'UTC', NOW(), NOW())
+    ON CONFLICT (date)
+    WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00' DO
+    UPDATE
+    SET "updatedAt"=NOW()
     RETURNING id INTO dd_date_id;
 
     INSERT INTO staging.debug_test_run(id, data,
@@ -1123,7 +1159,7 @@ BEGIN
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-17'
+                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -1238,7 +1274,7 @@ BEGIN
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING products.*),
@@ -1362,7 +1398,7 @@ BEGIN
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO
                     UPDATE
                     SET "updatedAt" = excluded."updatedAt"
@@ -1399,7 +1435,7 @@ BEGIN
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -1526,9 +1562,12 @@ BEGIN
     /*  dates.findOrCreate  */
     /*  TO DO:  add UQ constraint on date   */
 
-    INSERT INTO dates (date)
-    VALUES (dd_date AT TIME ZONE 'UTC')
-    ON CONFLICT DO NOTHING
+    INSERT INTO dates (date, "createdAt", "updatedAt")
+    VALUES (dd_date AT TIME ZONE 'UTC', NOW(), NOW())
+    ON CONFLICT (date)
+    WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00' DO
+    UPDATE
+    SET "updatedAt"=NOW()
     RETURNING id INTO dd_date_id;
 
     /*  RetailerService.getRetailerByName   */
@@ -1999,7 +2038,7 @@ TO DO
              --WHERE "updatedAt" != "createdAt"
              WHERE "updatedAt" >= NOW()::date
              ON CONFLICT ("coreProductId", "countryId")
-                 WHERE "createdAt" >= '2024-05-17'
+                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                  DO UPDATE
                      SET "updatedAt" = excluded."updatedAt"
              RETURNING "coreProductCountryData".*),
@@ -2114,7 +2153,7 @@ TO DO
 
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING *),
@@ -2246,7 +2285,7 @@ TO DO
                  INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
         ON CONFLICT ("coreRetailerId",
             "retailerTaxonomyId")
-            WHERE "createdAt" >= '2024-05-17'
+            WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
             DO NOTHING
         RETURNING "coreRetailerTaxonomies".*)
     INSERT
@@ -2297,7 +2336,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO
                     UPDATE
                     SET "updatedAt" = excluded."updatedAt"
@@ -2334,7 +2373,7 @@ TO DO
                                  WHERE "countryId" = dd_retailer."countryId") AS parentProdCountryData
                                 USING ("coreProductId")
             ON CONFLICT ("productId")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO NOTHING
             RETURNING "aggregatedProducts".*)
     INSERT
@@ -2379,7 +2418,7 @@ TO DO
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
             ON CONFLICT ("coreProductId", "sourceCategoryId")
-                WHERE "createdAt" >= '2024-05-17'
+                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO NOTHING
             RETURNING "coreProductSourceCategories".*)
     INSERT

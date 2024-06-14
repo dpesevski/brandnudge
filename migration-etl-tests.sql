@@ -6,9 +6,28 @@ TRUNCATE staging.debug_test_run;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 --SELECT *
-FROM staging.debug_errors;
-
+FROM staging.debug_errors
  */
+
+SELECT *
+FROM dates
+WHERE id >= 24436
+ORDER BY "createdAt" DESC NULLS LAST
+LIMIT 10;
+
+SELECT *
+FROM prod_fdw.dates
+ORDER BY "createdAt" DESC NULLS LAST
+LIMIT 10;
+
+SELECT DISTINCT "dateId"
+FROM products
+WHERE "dateId" >= 24436;
+
+SELECT DISTINCT "dateId"
+FROM prod_fdw.products
+WHERE "dateId" >= 24436;
+
 
 WITH prod_cnt AS (SELECT test_run_id AS debug_test_run_id, COUNT(*) AS product_count
                   FROM staging.debug_products
