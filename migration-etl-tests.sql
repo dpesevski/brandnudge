@@ -31,9 +31,7 @@ WHERE dd_date_id > 24436;
 
 -- 24436 2024-06-13T16:33:48.739Z
 
-SELECT staging.load_retailer_data(fetched_data, flag)
-FROM staging.debug_errors
-WHERE debug_test_run_id > 2;
+
 
 SELECT *
 FROM dates
