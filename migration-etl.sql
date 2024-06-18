@@ -953,17 +953,19 @@ BEGIN
                                   lat_promo_id."promoId",
                                   promo.description,
                                   promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
-                                  promo."multibuyPrice"                                   AS "multibuyPrice",
+                                  promo."multibuyPrice"                                AS "multibuyPrice",
 
                                   COALESCE(ret_promo."retailerPromotionId",
-                                           default_ret_promo."retailerPromotionId")       AS "retailerPromotionId",
-                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp)    AS regexp,
+                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
+                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
                                   COALESCE(ret_promo."promotionMechanicId",
-                                           default_ret_promo."promotionMechanicId")       AS "promotionMechanicId",
+                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
                                   COALESCE(
                                           ret_promo."promotionMechanicName",
-                                          default_ret_promo."promotionMechanicName")      AS "promotionMechanicName",
-                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx) AS rownum
+                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
+                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx ORDER BY
+                                      LOWER(ret_promo."promotionMechanicName") =
+                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
                            FROM tmp_product_pp AS product
                                     CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
                                                                                                    "retailerPromotionId",
@@ -1812,14 +1814,16 @@ TO DO
 
 
                                   COALESCE(ret_promo."retailerPromotionId",
-                                           default_ret_promo."retailerPromotionId")       AS "retailerPromotionId",
-                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp)    AS regexp,
+                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
+                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
                                   COALESCE(ret_promo."promotionMechanicId",
-                                           default_ret_promo."promotionMechanicId")       AS "promotionMechanicId",
+                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
                                   COALESCE(
                                           ret_promo."promotionMechanicName",
-                                          default_ret_promo."promotionMechanicName")      AS "promotionMechanicName",
-                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx) AS rownum
+                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
+                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx ORDER BY
+                                      LOWER(ret_promo."promotionMechanicName") =
+                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
                            FROM tmp_product AS product
                                     CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
                                                                                                    "retailerPromotionId",
