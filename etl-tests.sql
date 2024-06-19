@@ -53,6 +53,9 @@ SELECT COUNT(*)
 FROM prod_fdw.products
 WHERE "dateId" > 24568;
 
+/*  TESTS   */
+
+/*  T01:  product count prod <-> staging    */
 WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
               FROM test.tprd_products),
      staging AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
@@ -70,12 +73,14 @@ FROM prod_cnt
 --LEFT OUTER JOIN test.retailer USING ("retailerId")
 ORDER BY "retailerId";
 
+/*  T02:  missing products in prod    */
 SELECT *
 FROM test.tstg_products AS staging
          LEFT OUTER JOIN test.tprd_products AS prod
                          USING ("retailerId", dates_date, "sourceId")
 WHERE prod.id IS NULL;
 
+/*  T03:  product differences in general attributes    */
 SELECT COUNT(*)
 FROM test.tstg_products AS staging
          LEFT OUTER JOIN test.tprd_products AS prod
@@ -113,27 +118,64 @@ WHERE staging."sourceType" != prod."sourceType"
    OR staging."priceMatchDescription" != prod."priceMatchDescription"
    OR staging."priceMatched" != prod."priceMatched";
 
-
-
+/*  T04:  product differences in prices    */
+WITH staging AS (SELECT *
+                 FROM test.tstg_products
+                 WHERE dates_date = '2024-06-19')
 SELECT staging."sourceId",
-       --staging.multibuy        AS stag_multibuy,
        staging."promotedPrice" AS stag_promotedPrice,
        staging."basePrice"     AS stag_basePrice,
        staging."shelfPrice"    AS stag_shelfPrice,
-       --prod.multibuy           AS prod_multibuy,
        prod."promotedPrice"    AS prod_promotedPrice,
        prod."basePrice"        AS prod_basePrice,
        prod."shelfPrice"       AS prod_shelfPrice,
        prod.*
-FROM --(SELECT * FROM test.tstg_products WHERE dates_date = '2024-06-16' AND "retailerId" = 4) AS staging
-     test.tstg_products AS staging
+FROM staging
          LEFT OUTER JOIN test.tprd_products AS prod
                          USING ("retailerId", dates_date, "sourceId")
-WHERE
-   -- OR staging.ean != prod.ean
-   -- staging.multibuy != prod.multibuy
-   -- OR staging."coreProductId" != prod."coreProductId"
-    staging."promotedPrice"::numeric != prod."promotedPrice"::numeric
+WHERE staging."promotedPrice"::numeric != prod."promotedPrice"::numeric
    OR staging."basePrice"::numeric != REPLACE(prod."basePrice", ',', '')::numeric
    OR staging."shelfPrice"::numeric != prod."shelfPrice"::numeric
+ORDER BY staging."sourceId" DESC;
+
+/*  T05:  product differences in ean    */
+WITH staging AS (SELECT *
+                 FROM test.tstg_products
+                 WHERE dates_date = '2024-06-19')
+SELECT staging."sourceId",
+       staging.ean,
+       prod.ean,
+       prod.*
+FROM staging
+         LEFT OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging.ean != prod.ean
+ORDER BY staging."sourceId" DESC;
+
+/*  T06:  product differences in coreProductId    */
+WITH staging AS (SELECT *
+                 FROM test.tstg_products
+                 WHERE dates_date = '2024-06-19')
+SELECT staging."sourceId",
+       staging."coreProductId",
+       prod."coreProductId",
+       prod.*
+FROM staging
+         LEFT OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging."coreProductId" != prod."coreProductId"
+ORDER BY staging."sourceId" DESC;
+
+/*  T07:  product differences in multibuy    */
+WITH staging AS (SELECT *
+                 FROM test.tstg_products
+                 WHERE dates_date = '2024-06-19')
+SELECT staging."sourceId",
+       staging.multibuy,
+       prod.multibuy,
+       prod.*
+FROM staging
+         LEFT OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging.multibuy != prod.multibuy
 ORDER BY staging."sourceId" DESC;
