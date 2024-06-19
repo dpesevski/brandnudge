@@ -1,18 +1,33 @@
+/*
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+CREATE SERVER proddb_fdw FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com', port '5432', dbname 'brandnudge');
+CREATE USER MAPPING FOR postgres SERVER proddb_fdw OPTIONS (user 'dejan_user', password 'nCIqhxXgwItIGtK');
+
+CREATE SCHEMA prod_fdw;
+IMPORT FOREIGN SCHEMA public FROM SERVER proddb_fdw INTO prod_fdw;
+
 CREATE SCHEMA IF NOT EXISTS test;
+
++-----+---------------------------------+
+|id   |date                             |
++-----+---------------------------------+
+|24601|2024-06-19 00:00:00.000000 +00:00|
++-----+---------------------------------+
+*/
 
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT *
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM prod_fdw.dates) AS dates USING ("dateId")
-WHERE "dateId" > 24436;
+WHERE "dateId" > 24568;
 
 DROP TABLE IF EXISTS test.tstg_products;
 CREATE TABLE IF NOT EXISTS test.tstg_products AS
 SELECT *
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM dates) AS dates USING ("dateId")
-WHERE "dateId" > 24436;
+WHERE "dateId" > 24568;
 
 CREATE INDEX IF NOT EXISTS tprd_products_retailerId_date_sourceId_index
     ON test.tprd_products ("retailerId", dates_date, "sourceId");
@@ -22,21 +37,21 @@ CREATE INDEX IF NOT EXISTS tstg_products_retailerId_date_sourceId_index
 
 SELECT *
 FROM dates
-WHERE id > 24436
+WHERE id > 24568
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id > 24436
+WHERE id > 24568
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT COUNT(*)
 FROM products
-WHERE "dateId" > 24436;
+WHERE "dateId" > 24568;
 
 SELECT COUNT(*)
 FROM prod_fdw.products
-WHERE "dateId" > 24436;
+WHERE "dateId" > 24568;
 
 WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
               FROM test.tprd_products),
@@ -47,12 +62,12 @@ WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
                            FULL OUTER JOIN staging USING ("retailerId", dates_date, "sourceId")
                   GROUP BY "retailerId")
 SELECT "retailerId",
-       is_pp,
+       --is_pp,
        prod_prd_count,
        stg_prd_count,
-       CASE WHEN is_pp THEN prod_prd_count - stg_prd_count END AS prd_count_diff
+       CASE WHEN stg_prd_count > 0 THEN prod_prd_count - stg_prd_count END AS prd_count_diff
 FROM prod_cnt
-         LEFT OUTER JOIN test.retailer USING ("retailerId")
+--LEFT OUTER JOIN test.retailer USING ("retailerId")
 ORDER BY "retailerId";
 
 SELECT *
@@ -100,19 +115,25 @@ WHERE staging."sourceType" != prod."sourceType"
 
 
 
-SELECT staging."promotedPrice" AS stag_promotedPrice,
-       prod."promotedPrice"    AS prod_promotedPrice,
+SELECT staging."sourceId",
+       --staging.multibuy        AS stag_multibuy,
+       staging."promotedPrice" AS stag_promotedPrice,
        staging."basePrice"     AS stag_basePrice,
-       prod."basePrice"        AS prod_basePrice,
        staging."shelfPrice"    AS stag_shelfPrice,
+       --prod.multibuy           AS prod_multibuy,
+       prod."promotedPrice"    AS prod_promotedPrice,
+       prod."basePrice"        AS prod_basePrice,
        prod."shelfPrice"       AS prod_shelfPrice,
        prod.*
-FROM test.tstg_products AS staging
+FROM --(SELECT * FROM test.tstg_products WHERE dates_date = '2024-06-16' AND "retailerId" = 4) AS staging
+     test.tstg_products AS staging
          LEFT OUTER JOIN test.tprd_products AS prod
                          USING ("retailerId", dates_date, "sourceId")
 WHERE
-   --OR staging.multibuy != prod.multibuy
---OR staging."coreProductId" != prod."coreProductId"
+   -- OR staging.ean != prod.ean
+   -- staging.multibuy != prod.multibuy
+   -- OR staging."coreProductId" != prod."coreProductId"
     staging."promotedPrice"::numeric != prod."promotedPrice"::numeric
    OR staging."basePrice"::numeric != REPLACE(prod."basePrice", ',', '')::numeric
    OR staging."shelfPrice"::numeric != prod."shelfPrice"::numeric
+ORDER BY staging."sourceId" DESC;
