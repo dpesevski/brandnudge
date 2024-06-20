@@ -30,7 +30,72 @@ WHERE dd_date_id > 24436;
  */
 
 -- 24436 2024-06-13T16:33:48.739Z
+/*
+CREATE TABLE test.retailer_flag AS
+SELECT (dd_retailer).id                                       AS "retailerId",
+       STRING_AGG(DISTINCT flag, ', ')                        AS flag,
+       STRING_AGG(DISTINCT flag, ', ') = 'create-products-pp' AS is_pp
+FROM staging.debug_test_run
+GROUP BY 1;
 
+CREATE TABLE test.retailer_flag
+(
+    "retailerId" integer,
+    flag         text,
+    is_pp        boolean
+);
+
+INSERT INTO test.retailer_flag ("retailerId", flag, is_pp)
+VALUES (1, 'create-products', FALSE),
+       (2, 'create-products', FALSE),
+       (4, 'create-products-pp', TRUE),
+       (48, 'create-products-pp', TRUE),
+       (81, 'create-products-pp', TRUE),
+       (114, 'create-products-pp', TRUE),
+       (378, 'create-products-pp', TRUE),
+       (411, 'create-products-pp', TRUE),
+       (444, 'create-products-pp', TRUE),
+       (477, 'create-products-pp', TRUE),
+       (510, 'create-products-pp', TRUE),
+       (543, 'create-products-pp', TRUE),
+       (609, 'create-products-pp', TRUE),
+       (642, 'create-products-pp', TRUE),
+       (675, 'create-products-pp', TRUE),
+       (741, 'create-products-pp', TRUE),
+       (774, 'create-products-pp', TRUE),
+       (775, 'create-products-pp', TRUE),
+       (807, 'create-products-pp', TRUE),
+       (840, 'create-products-pp', TRUE),
+       (873, 'create-products-pp', TRUE),
+       (906, 'create-products-pp', TRUE),
+       (907, 'create-products-pp', TRUE),
+       (908, 'create-products-pp', TRUE),
+       (909, 'create-products-pp', TRUE),
+       (910, 'create-products-pp', TRUE),
+       (911, 'create-products-pp', TRUE),
+       (912, 'create-products-pp', TRUE),
+       (913, 'create-products-pp', TRUE),
+       (914, 'create-products-pp', TRUE),
+       (915, 'create-products-pp', TRUE),
+       (916, 'create-products-pp', TRUE),
+       (939, 'create-products-pp', TRUE),
+       (972, 'create-products-pp', TRUE),
+       (1005, 'create-products-pp', TRUE),
+       (1006, 'create-products-pp', TRUE),
+       (1007, 'create-products-pp', TRUE),
+       (1008, 'create-products-pp', TRUE),
+       (1009, 'create-products-pp', TRUE),
+       (1010, 'create-products-pp', TRUE),
+       (1011, 'create-products-pp', TRUE),
+       (1012, 'create-products-pp', TRUE),
+       (1013, 'create-products-pp', TRUE),
+       (1038, 'create-products-pp', TRUE),
+       (1071, 'create-products-pp', TRUE),
+       (1072, 'create-products-pp', TRUE),
+       (1104, 'create-products-pp', TRUE),
+       (1137, 'create-products-pp', TRUE),
+       (1170, 'create-products-pp', TRUE);
+*/
 
 
 SELECT *

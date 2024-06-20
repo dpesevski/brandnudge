@@ -119,10 +119,9 @@ WHERE staging."sourceType" != prod."sourceType"
    OR staging."priceMatched" != prod."priceMatched";
 
 /*  T04:  product differences in prices    */
-WITH staging AS (SELECT *
-                 FROM test.tstg_products
-                 WHERE dates_date = '2024-06-19')
-SELECT staging."sourceId",
+SELECT "retailerId",
+       dates_date,
+       "sourceId",
        staging."promotedPrice" AS stag_promotedPrice,
        staging."basePrice"     AS stag_basePrice,
        staging."shelfPrice"    AS stag_shelfPrice,
@@ -130,12 +129,12 @@ SELECT staging."sourceId",
        prod."basePrice"        AS prod_basePrice,
        prod."shelfPrice"       AS prod_shelfPrice,
        prod.*
-FROM staging
+FROM test.tstg_products AS staging
          LEFT OUTER JOIN test.tprd_products AS prod
                          USING ("retailerId", dates_date, "sourceId")
-WHERE staging."promotedPrice"::numeric != prod."promotedPrice"::numeric
-   OR staging."basePrice"::numeric != REPLACE(prod."basePrice", ',', '')::numeric
-   OR staging."shelfPrice"::numeric != prod."shelfPrice"::numeric
+WHERE staging."promotedPrice"::numeric != REPLACE(REPLACE(prod."promotedPrice", ',', ''), '', NULL)::numeric
+   OR staging."basePrice"::numeric != REPLACE(REPLACE(prod."basePrice", ',', ''), '', NULL)::numeric
+   OR staging."shelfPrice"::numeric != REPLACE(REPLACE(prod."shelfPrice", ',', ''), '', NULL)::numeric
 ORDER BY staging."sourceId" DESC;
 
 /*  T05:  product differences in ean    */
@@ -167,12 +166,15 @@ WHERE staging."coreProductId" != prod."coreProductId"
 ORDER BY staging."sourceId" DESC;
 
 /*  T07:  product differences in multibuy    */
-WITH staging AS (SELECT *
+WITH staging AS (SELECT tstg_products.*,
+                        debug_tmp_product_pp.promotions AS promodata
                  FROM test.tstg_products
+                          INNER JOIN staging.debug_tmp_product_pp USING (id)
                  WHERE dates_date = '2024-06-19')
 SELECT staging."sourceId",
        staging.multibuy,
        prod.multibuy,
+       JSONB_PRETTY(TO_JSONB(staging.promodata)) AS promodata,
        prod.*
 FROM staging
          LEFT OUTER JOIN test.tprd_products AS prod
