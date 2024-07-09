@@ -191,14 +191,14 @@ CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT *, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM prod_fdw.dates) AS dates USING ("dateId")
-WHERE "dateId" > 25162;
+WHERE "dateId" >= 25294;
 
 DROP TABLE IF EXISTS test.tstg_products;
 CREATE TABLE IF NOT EXISTS test.tstg_products AS
 SELECT *, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM dates) AS dates USING ("dateId")
-WHERE "dateId" > 25162;
+WHERE "dateId" >= 25388;
 
 CREATE INDEX IF NOT EXISTS tprd_products_retailerId_date_sourceId_index
     ON test.tprd_products ("retailerId", dates_date, "sourceId");
@@ -234,7 +234,7 @@ WITH promo AS (SELECT promotions."productId",
                FROM prod_fdw.promotions
                         INNER JOIN (SELECT id AS "productId"
                                     FROM prod_fdw.products
-                                    WHERE products."dateId" > 25162) AS products
+                                    WHERE products."dateId" >= 25294) AS products
                                    USING ("productId")
                         CROSS JOIN LATERAL (SELECT promotions."retailerPromotionId",
                                                    promotions.description,
