@@ -67,6 +67,7 @@ WHERE "dateId" > 25096;
 
 */
 
+
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY test_run_id, "retailerId", "sourceType")

@@ -2011,13 +2011,14 @@ TO DO
          upd_product_promo AS (SELECT promo."sourceId",
                                       MAX(promo."promotedPrice") FILTER (WHERE promo.promo_price_order = 1) AS "promotedPrice",
                                       MAX(promo."shelfPrice") FILTER (WHERE promo.promo_price_order = 1)    AS "shelfPrice",
-                                      ARRAY_AGG((COALESCE(prev_promo."promoId", promo."promoId"),
-                                                 promo."retailerPromotionId",
-                                                 COALESCE(prev_promo."startDate", promo."startDate"),
-                                                 promo."endDate",
-                                                 promo.description,
-                                                 promo."promotionMechanicName")::staging.t_promotion
-                                                ORDER BY promo.promo_indx)                                  AS promotions
+                                      ARRAY_AGG(DISTINCT (COALESCE(prev_promo."promoId", promo."promoId"),
+                                                          promo."retailerPromotionId",
+                                                          COALESCE(prev_promo."startDate", promo."startDate"),
+                                                          promo."endDate",
+                                                          promo.description,
+                                                          promo."promotionMechanicName")::staging.t_promotion
+                                          --          ORDER BY promo.promo_indx
+                                      )                                                                     AS promotions
                                FROM promo_price_calc AS promo
                                         LEFT OUTER JOIN prod_prev_promo AS prev_promo
                                                         ON (prev_promo."sourceId" = promo."sourceId" AND
