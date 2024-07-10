@@ -73,7 +73,7 @@ VALUES  (1, 'create-products', false),
         (9, NULL, false),
         (10, NULL, false),
         (13, NULL, false),
-        (159, NULL, false),
+        (159, 'create-products-pp', true),
         (345, NULL, false),
         (1269, 'create-products-pp', true);
 */
@@ -190,22 +190,28 @@ DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT *, NULL::json AS promo_data
 FROM prod_fdw.products
-         INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM prod_fdw.dates) AS dates USING ("dateId")
-WHERE "dateId" >= 25294;
+         INNER JOIN (SELECT id AS "dateId", date AS dates_date
+                     FROM prod_fdw.dates
+                     -- WHERE id > 25162
+                     WHERE date >= '2024-07-10') AS dates
+                    USING ("dateId");
 
 DROP TABLE IF EXISTS test.tstg_products;
 CREATE TABLE IF NOT EXISTS test.tstg_products AS
 SELECT *, NULL::json AS promo_data
 FROM products
-         INNER JOIN (SELECT id AS "dateId", date AS dates_date FROM dates) AS dates USING ("dateId")
-WHERE "dateId" >= 25388;
+         INNER JOIN (SELECT id AS "dateId", date AS dates_date
+                     FROM dates
+                     --WHERE id > 25162
+                     WHERE date >= '2024-07-10') AS dates
+                    USING ("dateId");
 
 CREATE INDEX IF NOT EXISTS tprd_products_retailerId_date_sourceId_index
     ON test.tprd_products ("retailerId", dates_date, "sourceId");
 
 CREATE INDEX IF NOT EXISTS tstg_products_retailerId_date_sourceId_index
     ON test.tstg_products ("retailerId", dates_date, "sourceId");
-
+/*
 WITH promo AS (SELECT promotions."productId",
                       JSON_AGG(promo ORDER BY promo.description) AS promo_data
                FROM promotions
@@ -246,7 +252,7 @@ UPDATE test.tprd_products AS products
 SET promo_data=promo.promo_data
 FROM promo
 WHERE promo."productId" = products.id;
-
+*/
 
 /*
 SELECT *

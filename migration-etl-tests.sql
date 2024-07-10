@@ -67,19 +67,21 @@ WHERE "dateId" > 25096;
 
 */
 
-WITH prod_cnt AS (SELECT test_run_id AS debug_test_run_id, "retailerId", "sourceType", COUNT(*) AS product_count
+WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY test_run_id, "retailerId", "sourceType")
-SELECT debug_test_run_id,
+SELECT id           AS test_run_id,
        --  fetched_data,
        "retailerId",
        "sourceType" AS retailer_name,
        product_count,
        flag,
-       created_at
-FROM staging.retailer_daily_data
-         INNER JOIN prod_cnt USING (debug_test_run_id)
-ORDER BY debug_test_run_id DESC;
+       run_at,
+       execution_time,
+       dd_date
+FROM staging.debug_test_run
+         INNER JOIN prod_cnt USING (id)
+ORDER BY id DESC;
 
 WITH debug_errors AS (SELECT debug_errors.id AS error_id,
                              debug_test_run_id,

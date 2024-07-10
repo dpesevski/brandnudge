@@ -665,12 +665,14 @@ DECLARE
     _hint              TEXT;
     _context           TEXT;
     _debug_test_run_id integer;
+    _start_ts          timestamptz;
 BEGIN
 
     INSERT INTO staging.retailer_daily_data (fetched_data, flag)
     VALUES (fetched_data, flag)
     RETURNING debug_test_run_id INTO _debug_test_run_id;
 
+    _start_ts := CLOCK_TIMESTAMP();
     IF flag = 'create-products' THEN
         PERFORM staging.load_retailer_data_base(fetched_data, _debug_test_run_id);
     ELSEIF flag = 'create-products-pp' THEN
@@ -678,6 +680,10 @@ BEGIN
     ELSE
         RAISE EXCEPTION 'no flag provided';
     END IF;
+
+    UPDATE staging.debug_test_run
+    SET execution_time=1000 * (EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()) - EXTRACT(EPOCH FROM _start_ts))
+    WHERE id = _debug_test_run_id;
 
     RETURN;
 EXCEPTION
