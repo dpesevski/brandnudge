@@ -335,8 +335,10 @@ CREATE TABLE IF NOT EXISTS staging.debug_test_run
     dd_retailer           retailers,
     dd_date_id            integer,
     dd_source_type        text,
-    dd_sourceCategoryType text
+    dd_sourceCategoryType text,
+    execution_time        double precision
 );
+
 DROP TABLE IF EXISTS staging.debug_errors;
 CREATE TABLE staging.debug_errors
 (
