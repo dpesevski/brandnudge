@@ -1342,14 +1342,17 @@ BEGIN
                                                                         'https://www.sainsburys.co.uk'),
                                                                 'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
                                                                 'https://assets.sainsburys-groceries.co.uk')
-                                                    WHEN "sourceType" = 'ocado' THEN REPLACE(
-                                                            'https://www.ocado.com' || "productImage",
-                                                            'https://www.ocado.comhttps://ocado.com',
-                                                            'https://www.ocado.com')
+                                                    WHEN "sourceType" = 'ocado' THEN REPLACE(REPLACE(
+                                                                                                     "productImage",
+                                                                                                     'https://ocado.com',
+                                                                                                     'https://www.ocado.com'),
+                                                                                             'https://www.ocado.comhttps://www.ocado.com',
+                                                                                             'https://www.ocado.com')
                                                     WHEN "sourceType" = 'morrisons' THEN
-                                                        'https://groceries.morrisons.com' || "productImage"
+                                                        REPLACE("productImage",
+                                                                'https://groceries.morrisons.comhttps://groceries.morrisons.com',
+                                                                'https://groceries.morrisons.com')
                                                     END AS "productImage"
-
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
@@ -2250,33 +2253,38 @@ TO DO
                    "sizeUnit",
                    "dateId"
             FROM tmp_product
-                     CROSS JOIN LATERAL (SELECT CASE
-                                                    WHEN "sourceType" = 'sainsburys' THEN
-                                                        REPLACE(
-                                                                REPLACE(
-                                                                        'https://www.sainsburys.co.uk' ||
-                                                                        "productImage",
-                                                                        'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
-                                                                        'https://www.sainsburys.co.uk'),
-                                                                'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
-                                                                'https://assets.sainsburys-groceries.co.uk')
-                                                    WHEN "sourceType" = 'ocado' THEN REPLACE(
-                                                            'https://www.ocado.com' || "productImage",
-                                                            'https://www.ocado.comhttps://ocado.com',
-                                                            'https://www.ocado.com')
-                                                    WHEN "sourceType" = 'morrisons' THEN
-                                                        'https://groceries.morrisons.com' || "productImage"
-                                                    END AS "productImage"
-
-                ) AS new_img
+                     CROSS JOIN LATERAL ( SELECT CASE
+                                                     WHEN "sourceType" = 'sainsburys' THEN
+                                                         REPLACE(
+                                                                 REPLACE(
+                                                                         'https://www.sainsburys.co.uk' ||
+                                                                         "productImage",
+                                                                         'https://www.sainsburys.co.ukhttps://www.sainsburys.co.uk',
+                                                                         'https://www.sainsburys.co.uk'),
+                                                                 'https://www.sainsburys.co.ukhttps://assets.sainsburys-groceries.co.uk',
+                                                                 'https://assets.sainsburys-groceries.co.uk')
+                                                     WHEN "sourceType" = 'ocado' THEN REPLACE(REPLACE(
+                                                                                                      "productImage",
+                                                                                                      'https://ocado.com',
+                                                                                                      'https://www.ocado.com'),
+                                                                                              'https://www.ocado.comhttps://www.ocado.com',
+                                                                                              'https://www.ocado.com')
+                                                     WHEN "sourceType" = 'morrisons' THEN
+                                                         REPLACE("productImage",
+                                                                 'https://groceries.morrisons.comhttps://groceries.morrisons.com',
+                                                                 'https://groceries.morrisons.com')
+                                                     END AS "productImage") AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
-                DO UPDATE
+                DO
+                    UPDATE
                     SET "updatedAt" = excluded."updatedAt"
             RETURNING *),
          debug_ins_products AS (
-             INSERT INTO staging.debug_products
-                 SELECT debug_test_run_id, * FROM ins_products)
+             INSERT
+                 INTO staging.debug_products
+                     SELECT debug_test_run_id, *
+                     FROM ins_products)
     UPDATE tmp_product
     SET id=ins_products.id
     FROM ins_products
