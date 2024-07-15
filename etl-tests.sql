@@ -611,3 +611,29 @@ FROM test.tstg_products AS staging
                          USING ("retailerId", dates_date, "sourceId")
 WHERE LOWER(staging.promo_data::text) != LOWER(prod.promo_data::text)
 ORDER BY staging."sourceId" DESC;
+
+/*  T15:  product differences in  productInStock   */
+SELECT "retailerId",
+       dates_date,
+       "sourceId",
+       staging."productInStock",
+       prod."productInStock",
+       prod.*
+FROM test.tstg_products AS staging
+         LEFT OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging."productInStock" != prod."productInStock"
+ORDER BY staging."sourceId" DESC;
+
+/*  T16:  product differences in productBrand   */
+SELECT "retailerId",
+       dates_date,
+       "sourceId",
+       staging."productBrand",
+       prod."productBrand",
+       prod.*
+FROM test.tstg_products AS staging
+         LEFT OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging."productBrand" != prod."productBrand"
+ORDER BY staging."sourceId" DESC;

@@ -729,10 +729,11 @@ BEGIN
     INSERT INTO dates (date, "createdAt", "updatedAt")
     VALUES (dd_date AT TIME ZONE 'UTC', NOW(), NOW())
     ON CONFLICT (date)
-    WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00' DO
-    UPDATE
-    SET "updatedAt"=NOW()
-    RETURNING id INTO dd_date_id;
+        -- WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
+        DO UPDATE
+        SET "updatedAt"=NOW()
+    RETURNING id
+        INTO dd_date_id;
 
     INSERT INTO staging.debug_test_run(id, data,
                                        flag,
@@ -1357,7 +1358,11 @@ BEGIN
             ON CONFLICT ("sourceId", "retailerId", "dateId")
                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO UPDATE
-                    SET "updatedAt" = excluded."updatedAt"
+                    SET "updatedAt" = excluded."updatedAt",
+                        "productInStock" = excluded."productInStock",
+                        "productBrand" = excluded."productBrand",
+                        "reviewsCount" = excluded."reviewsCount",
+                        "reviewsStars" = excluded."reviewsStars"
             RETURNING products.*),
          debug_ins_products AS (
              INSERT INTO staging.debug_products
@@ -1654,9 +1659,9 @@ BEGIN
     INSERT INTO dates (date, "createdAt", "updatedAt")
     VALUES (dd_date AT TIME ZONE 'UTC', NOW(), NOW())
     ON CONFLICT (date)
-    WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00' DO
-    UPDATE
-    SET "updatedAt"=NOW()
+        -- WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
+        DO UPDATE
+        SET "updatedAt"=NOW()
     RETURNING id INTO dd_date_id;
 
     /*  RetailerService.getRetailerByName   */
@@ -2278,7 +2283,11 @@ TO DO
                 WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
                 DO
                     UPDATE
-                    SET "updatedAt" = excluded."updatedAt"
+                    SET "updatedAt" = excluded."updatedAt",
+                        "productInStock" = excluded."productInStock",
+                        "productBrand" = excluded."productBrand",
+                        "reviewsCount" = excluded."reviewsCount",
+                        "reviewsStars" = excluded."reviewsStars"
             RETURNING *),
          debug_ins_products AS (
              INSERT
