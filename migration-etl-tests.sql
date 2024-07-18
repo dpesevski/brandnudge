@@ -4,7 +4,6 @@ TRUNCATE staging.debug_errors;
 TRUNCATE staging.debug_test_run;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
---SELECT *
 FROM staging.debug_errors
 
 UPDATE products
@@ -66,6 +65,9 @@ FROM prod_fdw.products
 WHERE "dateId" > 25096;
 
 */
+
+SELECT staging.load_retailer_data(fetched_data, flag)
+FROM staging.debug_errors;
 
 
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count

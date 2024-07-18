@@ -1481,14 +1481,14 @@ BEGIN
                                 "createdAt",
                                 "updatedAt",
                                 "promoId")
-            SELECT "retailerPromotionId",
-                   id    AS "productId",
-                   description,
-                   "startDate",
-                   "endDate",
-                   NOW() AS "createdAt",
-                   NOW() AS "updatedAt",
-                   "promoId"
+            SELECT DISTINCT "retailerPromotionId",
+                            id    AS "productId",
+                            description,
+                            "startDate",
+                            "endDate",
+                            NOW() AS "createdAt",
+                            NOW() AS "updatedAt",
+                            "promoId"
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
@@ -2458,14 +2458,14 @@ TO DO
                                 "createdAt",
                                 "updatedAt",
                                 "promoId")
-            SELECT "retailerPromotionId",
-                   id    AS "productId",
-                   description,
-                   "startDate",
-                   "endDate",
-                   NOW() AS "createdAt",
-                   NOW() AS "updatedAt",
-                   "promoId"
+            SELECT DISTINCT "retailerPromotionId",
+                            id    AS "productId",
+                            description,
+                            "startDate",
+                            "endDate",
+                            NOW() AS "createdAt",
+                            NOW() AS "updatedAt",
+                            "promoId"
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
