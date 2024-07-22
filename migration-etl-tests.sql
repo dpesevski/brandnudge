@@ -72,7 +72,7 @@ SELECT debug_test_run_id,
        CASE
            WHEN flag = 'create-products-pp' THEN
                fetched_data #>> '{retailer}'
-           ELSE fetched_data #>> '{products,0,sourceType}' END AS retailer,
+           ELSE fetched_data #>> '{0,sourceType}' END AS retailer,
        created_at
 FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
