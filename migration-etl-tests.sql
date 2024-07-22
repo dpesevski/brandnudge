@@ -66,9 +66,16 @@ WHERE "dateId" > 25096;
 
 */
 
-SELECT staging.load_retailer_data(fetched_data, flag)
-FROM staging.debug_errors;
 
+SELECT debug_test_run_id,
+       flag,
+       CASE
+           WHEN flag = 'create-products-pp' THEN
+               fetched_data #>> '{retailer}'
+           ELSE fetched_data #>> '{products,0,sourceType}' END AS retailer,
+       created_at
+FROM staging.retailer_daily_data
+ORDER BY created_at DESC;
 
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
@@ -112,5 +119,4 @@ FROM debug_errors
          LEFT OUTER JOIN debug_test_run
                          USING (debug_test_run_id)
 ORDER BY error_id;
-
 
