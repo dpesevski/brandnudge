@@ -75,7 +75,9 @@ VALUES  (1, 'create-products', false),
         (13, NULL, false),
         (159, 'create-products-pp', true),
         (345, NULL, false),
-        (1269, 'create-products-pp', true);
+        (1269, 'create-products-pp', true),
+        (1302, 'create-products-pp', true)
+;
 */
 
 /*
@@ -307,8 +309,8 @@ WHERE prod.id IS NULL;
 /*  T03:  product differences in general attributes    */
 SELECT COUNT(*)
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."sourceType" != prod."sourceType"
    -- OR staging.ean != prod.ean
    OR staging.promotions != prod.promotions
@@ -354,8 +356,8 @@ SELECT "retailerId",
        prod."shelfPrice"       AS prod_shelfPrice,
        prod.*
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."promotedPrice"::numeric != REPLACE(REPLACE(prod."promotedPrice", ',', ''), '', NULL)::numeric
    OR staging."basePrice"::numeric != REPLACE(REPLACE(prod."basePrice", ',', ''), '', NULL)::numeric
    OR staging."shelfPrice"::numeric != REPLACE(REPLACE(prod."shelfPrice", ',', ''), '', NULL)::numeric
@@ -369,8 +371,8 @@ SELECT "retailerId",
        prod.ean,
        prod.*
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging.ean != prod.ean
 ORDER BY staging."sourceId" DESC;
 
@@ -390,8 +392,8 @@ SELECT "retailerId",
        prod.core_ean,
        prod.*
 FROM staging
-         LEFT OUTER JOIN prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."coreProductId" != prod."coreProductId"
   AND staging.core_ean != prod.core_ean
 ORDER BY staging."sourceId" DESC;
@@ -409,8 +411,8 @@ SELECT "retailerId",
        JSONB_PRETTY(TO_JSONB(staging.promodata)) AS promodata,
        prod.*
 FROM staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging.multibuy != prod.multibuy
 ORDER BY staging."sourceId" DESC;
 
@@ -422,8 +424,8 @@ SELECT "retailerId",
        prod."promotionDescription"    AS prod_promotionDescription,
        prod.*
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."promotionDescription" != prod."promotionDescription"
 ORDER BY staging."sourceId" DESC;
 
@@ -439,8 +441,8 @@ SELECT "retailerId",
        staging."href" AS staging_href,
        prod."href"    AS prod_href
 FROM staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."href" != prod."href";
 
 
@@ -457,8 +459,8 @@ SELECT "retailerId",
        prod."features"    AS prod_features,
        prod.*
 FROM staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging.features != prod.features;
 
 /*  T11:  product differences in productInfo    */
@@ -477,8 +479,8 @@ SELECT "retailerId",
        prod."productInfo"                                                               AS prod_productInfo,
        prod.*
 FROM staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productInfo" != prod."productInfo";
 /*
 /*  T12A:  pp loads with multiple records for a single product - different promoData and prices   */
@@ -607,8 +609,8 @@ SELECT "retailerId",
        prod.promo_data #>> '{0,startDate}'
 
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE LOWER(staging.promo_data::text) != LOWER(prod.promo_data::text)
 ORDER BY staging."sourceId" DESC;
 
@@ -620,8 +622,8 @@ SELECT "retailerId",
        prod."productInStock",
        prod.*
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productInStock" != prod."productInStock"
 ORDER BY staging."sourceId" DESC;
 
@@ -633,7 +635,7 @@ SELECT "retailerId",
        prod."productBrand",
        prod.*
 FROM test.tstg_products AS staging
-         LEFT OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
+         INNER JOIN test.tprd_products AS prod
+                    USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productBrand" != prod."productBrand"
 ORDER BY staging."sourceId" DESC;
