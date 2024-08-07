@@ -5,6 +5,7 @@ TRUNCATE staging.debug_test_run;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
+where id=13
 
 UPDATE products
 SET "dateId"=24436
@@ -48,12 +49,12 @@ ORDER BY test_run_id DESC;
 
 SELECT *
 FROM dates
-WHERE id > 25162
+WHERE id >= 26218
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id > 25162
+WHERE id >=26218
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT COUNT(*)
@@ -67,16 +68,17 @@ WHERE "dateId" > 25096;
 */
 
 
+
 SELECT debug_test_run_id,
        flag,
        CASE
            WHEN flag = 'create-products-pp' THEN
                fetched_data #>> '{retailer}'
            ELSE fetched_data #>> '{0,sourceType}' END AS dd_retailer,
-     CASE
+       CASE
            WHEN flag = 'create-products-pp' THEN
                fetched_data #>> '{products,0,date}'
-           ELSE fetched_data #>> '{0,date}' END AS dd_date,
+           ELSE fetched_data #>> '{0,date}' END       AS dd_date,
        created_at
 FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
