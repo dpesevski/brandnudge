@@ -5,7 +5,7 @@ TRUNCATE staging.debug_test_run;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-where id=13
+where id=16
 
 UPDATE products
 SET "dateId"=24436
@@ -68,7 +68,7 @@ WHERE "dateId" > 25096;
 */
 
 
-
+/*
 SELECT debug_test_run_id,
        flag,
        CASE
@@ -82,6 +82,7 @@ SELECT debug_test_run_id,
        created_at
 FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
+ */
 
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
@@ -125,4 +126,3 @@ FROM debug_errors
          LEFT OUTER JOIN debug_test_run
                          USING (debug_test_run_id)
 ORDER BY error_id;
-
