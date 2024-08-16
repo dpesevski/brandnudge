@@ -5,7 +5,7 @@ TRUNCATE staging.debug_test_run;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-where id=16
+where id=1
 
 UPDATE products
 SET "dateId"=24436
@@ -49,12 +49,12 @@ ORDER BY test_run_id DESC;
 
 SELECT *
 FROM dates
-WHERE id >= 26218
+WHERE id >= 26482
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id >=26218
+WHERE id >=26482
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT COUNT(*)
@@ -126,3 +126,24 @@ FROM debug_errors
          LEFT OUTER JOIN debug_test_run
                          USING (debug_test_run_id)
 ORDER BY error_id;
+
+WITH load AS (SELECT id     AS debug_test_run_id,
+                     data,
+                     flag,
+                     run_at AS created_at,
+                     dd_date,
+                     dd_retailer,
+                     dd_date_id,
+                     dd_source_type,
+                     dd_sourcecategorytype
+              FROM staging.debug_test_run
+              WHERE id = 92)
+SELECT key, COUNT(*)
+FROM load
+         CROSS JOIN LATERAL JSON_ARRAY_ELEMENTS(data #> '{products}') AS product
+         CROSS JOIN LATERAL JSON_OBJECT_KEYS(product) AS key
+GROUP BY 1;
+
+SELECT staging.load_retailer_data(data, flag)
+FROM staging.debug_test_run
+where id=92
