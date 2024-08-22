@@ -49,12 +49,12 @@ ORDER BY test_run_id DESC;
 
 SELECT *
 FROM dates
-WHERE id >= 26482
+WHERE id >= 26647
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id >=26482
+WHERE id >=26647
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT COUNT(*)
@@ -147,3 +147,16 @@ GROUP BY 1;
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.debug_test_run
 where id=92
+
+
+/*
+null value in column "retailerPromotionId" violates not-null constraint
+{"id":1337,"name":"target_us","countryId":1,"updatedAt":"2024-08-17T15:39:36.133Z","createdAt":"2024-08-17T15:39:36.133Z"}
+
+
+SELECT *
+FROM "retailerPromotions"
+WHERE "retailerId" = 1337
+
+ */
+update staging.debug_errors set id=id-81
