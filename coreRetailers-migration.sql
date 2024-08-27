@@ -28,6 +28,12 @@ WITH selection AS (SELECT "retailerId",
 SELECT COUNT(*)
 FROM records_to_update
          INNER JOIN reviews USING ("coreRetailerId");
+/*
+?!
+20239655 count reviews
+12712318 count reviews TO correct;
+
+ */
 
 
 SELECT id,
@@ -48,8 +54,23 @@ SELECT id,
        "updatedAt"
 FROM "coreRetailerTaxonomies";
 
-?!
-20239655 count reviews
-12712318 count reviews TO correct
+SELECT id,
+       "productId",
+       "bannerId",
+       "createdAt",
+       "updatedAt",
+       "coreRetailerId"
+FROM "bannersProducts";
 
+SELECT id,
+       "coreRetailerId",
+       "dateId",
+       "createdAt",
+       "updatedAt"
+FROM "coreRetailerDates";
+
+SELECT *
+FROM information_schema.columns
+WHERE column_name = 'coreRetailerId'
+  AND table_schema = 'public';
 
