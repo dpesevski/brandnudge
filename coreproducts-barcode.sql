@@ -90,7 +90,7 @@ WHERE "coreProductId" = 264336;
 WITH products AS (SELECT DISTINCT "coreProductId", ean, "retailerId", "sourceId"
                   FROM "products"
                   WHERE "coreProductId" = 142552
-   -- WHERE "coreProductId" IN (142552, 777107)--, 50470)
+    -- WHERE "coreProductId" IN (142552, 777107)--, 50470)
 ),
      "coreProducts" AS (SELECT *
                         FROM "coreProducts"
@@ -127,22 +127,26 @@ FROM "coreRetailers_w_coreProducts";
 
 
 SELECT *
-FROM "coreProductBarcodes" where "coreProductId" in ('142552','777107');
+FROM "coreProductBarcodes"
+WHERE "coreProductId" IN ('142552', '777107');
 
 SELECT *
-FROM "coreProducts" where id in (50470);
+FROM "coreProducts"
+WHERE id IN (50470);
 
 SELECT *
-FROM "coreRetailers" where "retailerId"=3 and "productId"='7553454';
+FROM "coreRetailers"
+WHERE "retailerId" = 3
+  AND "productId" = '7553454';
 
 
 SELECT DISTINCT "coreProductId", ean, "retailerId", "sourceId"
 FROM public.products
-WHERE "coreProductId" IN (777107)
+WHERE "coreProductId" IN (777107);
 
 SELECT DISTINCT "coreProductId", ean, "retailerId", "sourceId"
 FROM products
-WHERE ean IN ('4025500165413', '4025500277239', 'B09WZDDL53')
+WHERE ean IN ('4025500165413', '4025500277239', 'B09WZDDL53');
 
 SELECT DISTINCT ean, "coreProductId", "sourceId", "retailerId", "productTitle"
 FROM "products"
@@ -150,3 +154,19 @@ WHERE "coreProductId" IN ('50470', '142552', '777107')
    OR ean IN ('4025500165413', '4025500277239')
 
 --WHERE "sourceId" = '311954680';
+
+WITH "coreRetailers" AS (SELECT *,
+                                ROW_NUMBER()
+                                OVER (PARTITION BY "retailerId", "productId" ORDER BY "createdAt" ) AS version_no
+                         FROM "coreRetailers")
+SELECT COUNT(*)
+FROM "coreRetailers"
+WHERE version_no > 1;
+
+
+WITH "coreRetailers" AS (SELECT "retailerId", "productId"
+                         FROM "coreRetailers"
+                         GROUP BY "retailerId", "productId"
+                         HAVING COUNT(*) > 1)
+SELECT COUNT(*)
+FROM "coreRetailers"
