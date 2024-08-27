@@ -29,14 +29,27 @@ SELECT COUNT(*)
 FROM records_to_update
          INNER JOIN reviews USING ("coreRetailerId");
 
+
+SELECT id,
+       "coreRetailerId",
+       "reviewId",
+       title,
+       comment,
+       rating,
+       date,
+       "createdAt",
+       "updatedAt"
+FROM reviews;
+
+SELECT id,
+       "coreRetailerId",
+       "retailerTaxonomyId",
+       "createdAt",
+       "updatedAt"
+FROM "coreRetailerTaxonomies";
+
 ?!
 20239655 count reviews
 12712318 count reviews TO correct
-
-SELECT *,
-       SUM(1) OVER (PARTITION BY "retailerId", "coreProductId")                                 AS group_id,
-       ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY "createdAt" DESC) AS version_no
-FROM "coreRetailers"
-ORDER BY "retailerId", "coreProductId", "createdAt" DESC
 
 
