@@ -24,7 +24,9 @@ SELECT COUNT(*)
 FROM records_to_update
          INNER JOIN reviews USING ("coreRetailerId");
 
-
+?!
+20239655 count reviews
+12712318 count reviews to correct
 
 SELECT *,
        SUM(1) OVER (PARTITION BY "retailerId", "coreProductId")                                 AS group_id,
