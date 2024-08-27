@@ -84,6 +84,8 @@ FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
  */
 
+
+
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY test_run_id, "retailerId", "sourceType")
@@ -144,11 +146,6 @@ FROM load
          CROSS JOIN LATERAL JSON_OBJECT_KEYS(product) AS key
 GROUP BY 1;
 
-SELECT staging.load_retailer_data(data, flag)
-FROM staging.debug_test_run
-where id=92
-
-
 /*
 null value in column "retailerPromotionId" violates not-null constraint
 {"id":1337,"name":"target_us","countryId":1,"updatedAt":"2024-08-17T15:39:36.133Z","createdAt":"2024-08-17T15:39:36.133Z"}
@@ -159,4 +156,4 @@ FROM "retailerPromotions"
 WHERE "retailerId" = 1337
 
  */
-update staging.debug_errors set id=id-81
+

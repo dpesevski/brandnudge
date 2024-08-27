@@ -1461,7 +1461,7 @@ BEGIN
     SELECT id,
            "coreProductId",
            "retailerId",
-           "productId"::integer,
+           "productId",
            "createdAt",
            "updatedAt"
     FROM ins_coreRetailers;
@@ -2435,7 +2435,7 @@ TO DO
     SELECT id,
            "coreProductId",
            "retailerId",
-           "productId"::integer,
+           "productId",
            "createdAt",
            "updatedAt"
     FROM ins_coreRetailers;
@@ -2456,7 +2456,7 @@ TO DO
                NOW(),
                NOW()
         FROM tmp_coreRetailer
-                 INNER JOIN (SELECT DISTINCT tmp_product.id AS "productId",
+                 INNER JOIN (SELECT DISTINCT tmp_product."sourceId" AS "productId",
                                              ranking."taxonomyId"
                              FROM tmp_product
                                       CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking) AS product
