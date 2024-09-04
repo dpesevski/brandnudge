@@ -150,6 +150,7 @@ GROUP BY 1;
 null value in column "retailerPromotionId" violates not-null constraint
 {"id":1337,"name":"target_us","countryId":1,"updatedAt":"2024-08-17T15:39:36.133Z","createdAt":"2024-08-17T15:39:36.133Z"}
 
+truncate staging.debug_errors
 
 SELECT *
 FROM "retailerPromotions"

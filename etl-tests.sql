@@ -196,7 +196,7 @@ SELECT *, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id > 26647
+                     WHERE id > 27076
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");
@@ -207,7 +207,7 @@ SELECT *, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id > 26647
+                     WHERE id > 28028
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");
