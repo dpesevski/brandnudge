@@ -78,7 +78,7 @@ VALUES  (1, 'create-products', false),
         (1269, 'create-products-pp', true),
         (1302, 'create-products-pp', true),
         (11, 'create-products-pp', true),
-        (1335, 'create-products-pp', true),
+        (1335, 'create-products-pp', true)
 ;
 */
 

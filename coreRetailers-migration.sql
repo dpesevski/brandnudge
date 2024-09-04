@@ -37,23 +37,62 @@ SELECT COUNT(*) /* 1.509.139 */
 FROM "coreRetailers";
 */
 
-CREATE TABLE "reviews_corrections" AS
-WITH corrections AS (
-    UPDATE reviews AS destination_table
-        SET "coreRetailerId" = "new_coreRetailerId"
-        FROM records_to_update
-        WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId")
+WITH upd_reviews AS (SELECT "retailerId", "coreProductId", "new_coreRetailerId", reviews.*
+                     FROM reviews
+                              INNER JOIN records_to_update USING ("coreRetailerId")
+                     UNION ALL
+                     SELECT DISTINCT "retailerId",
+                                     "coreProductId",
+                                     reviews."coreRetailerId" AS "new_coreRetailerId",
+                                     reviews.*
+                     FROM reviews
+                              INNER JOIN records_to_update
+                                         ON (reviews."coreRetailerId" = records_to_update."new_coreRetailerId")),
+     selection AS (SELECT "new_coreRetailerId", "reviewId"
+                   FROM upd_reviews
+                   GROUP BY "new_coreRetailerId", "reviewId"
+                   HAVING COUNT(*) > 1)
 SELECT *
-FROM corrections;
+FROM upd_reviews
+         INNER JOIN selection USING ("new_coreRetailerId", "reviewId")
+ORDER BY "new_coreRetailerId", "reviewId";
+
+
+
+SELECT *
+FROM reviews
+
+WHERE "coreRetailerId" IN ('22619', '16453')
+  AND "reviewId" = '969937';
+
+SELECT *
+FROM records_to_update
+WHERE "new_coreRetailerId" = '22619'
+
+SELECT COUNT(*)
+FROM "bannersProducts"
+         INNER JOIN records_to_update USING ("coreRetailerId");
+DROP INDEX coreretailerid_reviewid_uniq;
+
+CREATE TABLE "reviews_corrections" AS
+SELECT *
+FROM reviews
+         INNER JOIN records_to_update USING ("coreRetailerId");
+
+UPDATE reviews AS destination_table
+SET "coreRetailerId" = "new_coreRetailerId"
+FROM records_to_update
+WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId";
 
 CREATE TABLE "coreRetailerTaxonomies_corrections" AS
-WITH corrections AS (
-    UPDATE "coreRetailerTaxonomies" AS destination_table
-        SET "coreRetailerId" = "new_coreRetailerId"
-        FROM records_to_update
-        WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId")
 SELECT *
-FROM corrections;
+FROM "coreRetailerTaxonomies"
+         INNER JOIN records_to_update USING ("coreRetailerId");
+
+UPDATE "coreRetailerTaxonomies" AS destination_table
+SET "coreRetailerId" = "new_coreRetailerId"
+FROM records_to_update
+WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId";
 
 /*  2nd step for "coreRetailerTaxonomies"
     Previous update may produce multiple records with same "retailerTaxonomyId" for a given "coreRetailerId".
@@ -75,7 +114,8 @@ WITH corrections AS (
     UPDATE "bannersProducts" AS destination_table
         SET "coreRetailerId" = "new_coreRetailerId"
         FROM records_to_update
-        WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId")
+        WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId"
+        RETURNING *)
 SELECT *
 FROM corrections;
 
