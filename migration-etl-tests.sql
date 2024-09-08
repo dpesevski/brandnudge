@@ -128,7 +128,7 @@ FROM debug_errors
          LEFT OUTER JOIN debug_test_run
                          USING (debug_test_run_id)
 ORDER BY error_id;
-
+/*
 WITH load AS (SELECT id     AS debug_test_run_id,
                      data,
                      flag,
@@ -145,7 +145,7 @@ FROM load
          CROSS JOIN LATERAL JSON_ARRAY_ELEMENTS(data #> '{products}') AS product
          CROSS JOIN LATERAL JSON_OBJECT_KEYS(product) AS key
 GROUP BY 1;
-
+*/
 /*
 null value in column "retailerPromotionId" violates not-null constraint
 {"id":1337,"name":"target_us","countryId":1,"updatedAt":"2024-08-17T15:39:36.133Z","createdAt":"2024-08-17T15:39:36.133Z"}

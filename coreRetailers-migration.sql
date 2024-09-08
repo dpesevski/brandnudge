@@ -67,7 +67,7 @@ WHERE "coreRetailerId" IN ('22619', '16453')
 
 SELECT *
 FROM records_to_update
-WHERE "new_coreRetailerId" = '22619'
+WHERE "new_coreRetailerId" = '22619';
 
 SELECT COUNT(*)
 FROM "bannersProducts"
