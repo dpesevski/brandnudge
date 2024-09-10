@@ -1,11 +1,15 @@
-CREATE TEMPORARY TABLE records_to_update ON COMMIT DROP AS
-WITH selection AS (SELECT "retailerId",
-                          "coreProductId",
-                          ARRAY_AGG("productId" ORDER BY "createdAt" DESC) AS "productIds"
-                   FROM "coreRetailers"
+--CREATE TEMPORARY TABLE records_to_update ON COMMIT DROP AS
+CREATE TABLE records_to_update AS
+WITH retailers_selection AS (SELECT id AS "retailerId"
+                             FROM retailers),
 
-                   GROUP BY "retailerId", "coreProductId"
-                   HAVING COUNT(*) > 1),
+     ret_prod_selection AS (SELECT "retailerId",
+                                   "coreProductId",
+                                   ARRAY_AGG("productId" ORDER BY "createdAt" DESC) AS "productIds"
+                            FROM "coreRetailers"
+                                     INNER JOIN retailers_selection USING ("retailerId")
+                            GROUP BY "retailerId", "coreProductId"
+                            HAVING COUNT(*) > 1),
 
      "coreRetailers_base" AS (SELECT id                            AS "coreRetailerId",
                                      "coreProductId",
@@ -16,7 +20,7 @@ WITH selection AS (SELECT "retailerId",
                                      "productIds",
                                      "productId" = "productIds"[1] AS is_most_recent_record
                               FROM "coreRetailers"
-                                       INNER JOIN selection USING ("retailerId", "coreProductId")
+                                       INNER JOIN ret_prod_selection USING ("retailerId", "coreProductId")
                               ORDER BY "retailerId", "coreProductId", "createdAt" DESC),
 
      records_to_keep AS (SELECT "retailerId",
@@ -30,10 +34,10 @@ FROM "coreRetailers_base"
 WHERE NOT is_most_recent_record;
 
 /*
-SELECT COUNT(*) /*   696.096 */
+SELECT COUNT(*)
 FROM records_to_update;
 
-SELECT COUNT(*) /* 1.509.139 */
+SELECT COUNT(*)
 FROM "coreRetailers";
 */
 
@@ -57,32 +61,41 @@ FROM upd_reviews
          INNER JOIN selection USING ("new_coreRetailerId", "reviewId")
 ORDER BY "new_coreRetailerId", "reviewId";
 
-
-
-SELECT *
-FROM reviews
-
-WHERE "coreRetailerId" IN ('22619', '16453')
-  AND "reviewId" = '969937';
-
-SELECT *
-FROM records_to_update
-WHERE "new_coreRetailerId" = '22619';
-
+/*
 SELECT COUNT(*)
 FROM "bannersProducts"
          INNER JOIN records_to_update USING ("coreRetailerId");
-DROP INDEX coreretailerid_reviewid_uniq;
+
+ */
+
+--DROP INDEX coreretailerid_reviewid_uniq;
+--DROP TABLE "reviews_corrections";
 
 CREATE TABLE "reviews_corrections" AS
-SELECT *
+SELECT *, copy_of_review."reviewId" IS NOT NULL AS is_a_copy
 FROM reviews
-         INNER JOIN records_to_update USING ("coreRetailerId");
+         INNER JOIN records_to_update USING ("coreRetailerId")
+         LEFT OUTER JOIN (SELECT "coreRetailerId" AS "new_coreRetailerId", "reviewId" FROM reviews) AS copy_of_review
+                         USING ("new_coreRetailerId", "reviewId");
 
-UPDATE reviews AS destination_table
+-- review records to delete as they have same reviewId/comments and the rest of the fields.
+-- These are a copy of the review record we'll keep.
+DELETE
+FROM reviews
+    USING reviews_corrections
+WHERE reviews."coreRetailerId" = "reviews_corrections"."coreRetailerId"
+  AND reviews."reviewId" = reviews_corrections."reviewId"
+  AND is_a_copy;
+
+/*
+    Should update only the remaining records in
+*/
+UPDATE reviews
 SET "coreRetailerId" = "new_coreRetailerId"
-FROM records_to_update
-WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId";
+FROM reviews_corrections
+WHERE reviews."coreRetailerId" = reviews_corrections."coreRetailerId"
+  AND reviews."reviewId" = reviews_corrections."reviewId"
+  AND NOT is_a_copy;
 
 CREATE TABLE "coreRetailerTaxonomies_corrections" AS
 SELECT *

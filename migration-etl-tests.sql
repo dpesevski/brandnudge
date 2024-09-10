@@ -49,12 +49,12 @@ ORDER BY test_run_id DESC;
 
 SELECT *
 FROM dates
-WHERE id >= 26647
+WHERE id >= 27241
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id >=26647
+WHERE id >=27241
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT COUNT(*)
