@@ -95,6 +95,7 @@ SELECT id           AS test_run_id,
        "sourceType" AS retailer_name,
        product_count,
        flag,
+
        run_at,
        execution_time,
        dd_date

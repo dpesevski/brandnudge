@@ -1,8 +1,12 @@
 --CREATE TEMPORARY TABLE records_to_update ON COMMIT DROP AS
+DROP TABLE IF EXISTS records_to_update;
 CREATE TABLE records_to_update AS
-WITH retailers_selection AS (SELECT id AS "retailerId"
-                             FROM retailers),
-
+WITH retailers_selection2("retailerId") AS (VALUES (3), -- sainsburys
+                                                   (8), -- ocado
+                                                   (10) -- waitrose
+),
+     retailers_selection("retailerId") AS (SELECT id AS "retailerId"
+                                           FROM retailers),
      ret_prod_selection AS (SELECT "retailerId",
                                    "coreProductId",
                                    ARRAY_AGG("productId" ORDER BY "createdAt" DESC) AS "productIds"
@@ -40,7 +44,7 @@ FROM records_to_update;
 SELECT COUNT(*)
 FROM "coreRetailers";
 */
-
+/*
 WITH upd_reviews AS (SELECT "retailerId", "coreProductId", "new_coreRetailerId", reviews.*
                      FROM reviews
                               INNER JOIN records_to_update USING ("coreRetailerId")
@@ -60,22 +64,22 @@ SELECT *
 FROM upd_reviews
          INNER JOIN selection USING ("new_coreRetailerId", "reviewId")
 ORDER BY "new_coreRetailerId", "reviewId";
-
+*/
 /*
 SELECT COUNT(*)
 FROM "bannersProducts"
          INNER JOIN records_to_update USING ("coreRetailerId");
-
  */
 
 --DROP INDEX coreretailerid_reviewid_uniq;
---DROP TABLE "reviews_corrections";
+DROP TABLE IF EXISTS "reviews_corrections";
 
 CREATE TABLE "reviews_corrections" AS
+WITH copy_of_review AS (SELECT "coreRetailerId" AS "new_coreRetailerId", "reviewId" FROM reviews)
 SELECT *, copy_of_review."reviewId" IS NOT NULL AS is_a_copy
 FROM reviews
          INNER JOIN records_to_update USING ("coreRetailerId")
-         LEFT OUTER JOIN (SELECT "coreRetailerId" AS "new_coreRetailerId", "reviewId" FROM reviews) AS copy_of_review
+         LEFT OUTER JOIN copy_of_review
                          USING ("new_coreRetailerId", "reviewId");
 
 -- review records to delete as they have same reviewId/comments and the rest of the fields.
