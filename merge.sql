@@ -14,6 +14,8 @@
 |coreProductBarcodes        |YES        | there is no NOT NULL constraint on coreProductId, and no FK to coreProducts. However, the data is ok, and these constraints can be added immediately,
 |coreProductSourceCategories|YES        | FK to coreProducts exists, only add NOT NULL constraint. UQ constraint exist on ("sourceCategoryId", "coreProductId"). When merging, if a record with a ("sourceCategoryId", new "coreProductId") exists, the record being merged should be deleted.
 |coreProductCountryData     |YES        | FK to coreProducts exists as well, add NOT NULL constraint. UQ constraint exist on ("coreProductId", "countryId"). When merging, if a record with a ("countryId", new "coreProductId") exists, the record being merged should be deleted.
+
+
 |coreRetailers              |YES        | there is no NOT NULL constraint on coreProductId and no FK to coreProducts. One record relates to non-existing coreProductId(36693). Other then this constraints can be added immediately,
                                           There is UQ on ("coreProductId", "retailerId", "productId"). However, this table should split in 2
                                             - one, keeping the name but with UQ ("coreProductId", "retailerId"), and
@@ -30,14 +32,14 @@ NOT included in the updates.
 */
 
 SELECT *
-FROM "coreProducts"
-WHERE "productGroupId" IS NOT NULL
-ORDER BY "createdAt" DESC;
+FROM "coreProductCountryData";
 
 
 /*  pre-script, add missing constraints */
 ALTER TABLE "coreProductBarcodes"
-    ALTER COLUMN "coreProductId" SET NOT NULL;
+    ALTER
+        COLUMN "coreProductId"
+        SET NOT NULL;
 
 ALTER TABLE "coreProductBarcodes"
     ADD CONSTRAINT coreProductBarcodes_coreProducts__fk
@@ -59,12 +61,17 @@ CREATE TABLE IF NOT EXISTS staging.merge_log
 
 
     "updated_taxonomyProducts"            integer[],
-    "updated_productGroupCoreProducts"    integer[],
 
     "updated_coreProductBarcodes"         integer[],
 
     "updated_coreProductSourceCategories" integer[],
     "deleted_coreProductSourceCategories" "coreProductSourceCategories"[],
+
+    "updated_productGroupCoreProducts"    integer[],
+    "deleted_productGroupCoreProducts"    "productGroupCoreProducts"[],
+
+    "updated_coreProductCountryData"      integer[],
+    "deleted_coreProductCountryData"      "coreProductCountryData"[],
 
     "updated_coreRetailers"               integer[],
 
@@ -86,6 +93,11 @@ DECLARE
     "_updated_coreProductBarcodes"         integer[];
     "_updated_coreProductSourceCategories" integer[];
     "_deleted_coreProductSourceCategories" "coreProductSourceCategories"[];
+    "_updated_productGroupCoreProducts"    integer[];
+    "_deleted_productGroupCoreProducts"    "productGroupCoreProducts"[];
+    "_updated_coreProductCountryData"      integer[];
+    "_deleted_coreProductCountryData"      "coreProductCountryData"[];
+
 BEGIN
 
     SELECT *
@@ -127,7 +139,7 @@ BEGIN
     INTO "_updated_coreProductBarcodes"
     FROM upd;
 
-
+    /*  coreProductSourceCategories */
     WITH new AS (SELECT "sourceCategoryId"
                  FROM "coreProductSourceCategories"
                  WHERE "coreProductId" = "new_coreProductId")
@@ -149,6 +161,78 @@ BEGIN
       AND new."sourceCategoryId" IS NULL;
 
 
+    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_coreProductSourceCategories") AS t)
+    DELETE
+    FROM "coreProductSourceCategories" USING deleted
+    WHERE "coreProductSourceCategories".id = deleted.id;
+
+    UPDATE "coreProductSourceCategories"
+    SET "coreProductId" = "new_coreProductId"
+    WHERE id = ANY ("_updated_coreProductSourceCategories");
+
+    /*  productGroupCoreProducts    */
+    WITH new AS (SELECT "productGroupId"
+                 FROM "productGroupCoreProducts"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("productGroupCoreProducts")
+    INTO "_deleted_productGroupCoreProducts"
+    FROM "productGroupCoreProducts"
+             INNER JOIN new USING ("productGroupId")
+    WHERE "coreProductId" = "old_coreProductId";
+
+    WITH new AS (SELECT "productGroupId"
+                 FROM "productGroupCoreProducts"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("id")
+    INTO "_updated_productGroupCoreProducts"
+    FROM "productGroupCoreProducts"
+             LEFT OUTER JOIN new USING ("productGroupId")
+    WHERE "coreProductId" = "old_coreProductId"
+      AND new."productGroupId" IS NULL;
+
+
+    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_productGroupCoreProducts") AS t)
+    DELETE
+    FROM "productGroupCoreProducts" USING deleted
+    WHERE "productGroupCoreProducts".id = deleted.id;
+
+    UPDATE "productGroupCoreProducts"
+    SET "coreProductId" = "new_coreProductId"
+    WHERE id = ANY ("_updated_productGroupCoreProducts");
+
+
+    /*  coreProductCountryData  */
+    WITH new AS (SELECT "countryId"
+                 FROM "coreProductCountryData"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("coreProductCountryData")
+    INTO "_deleted_coreProductCountryData"
+    FROM "coreProductCountryData"
+             INNER JOIN new USING ("countryId")
+    WHERE "coreProductId" = "old_coreProductId";
+
+    WITH new AS (SELECT "countryId"
+                 FROM "coreProductCountryData"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("id")
+    INTO "_updated_coreProductCountryData"
+    FROM "coreProductCountryData"
+             LEFT OUTER JOIN new USING ("countryId")
+    WHERE "coreProductId" = "old_coreProductId"
+      AND new."countryId" IS NULL;
+
+
+    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_coreProductCountryData") AS t)
+    DELETE
+    FROM "coreProductCountryData" USING deleted
+    WHERE "coreProductCountryData".id = deleted.id;
+
+    UPDATE "coreProductCountryData"
+    SET "coreProductId" = "new_coreProductId"
+    WHERE id = ANY ("_updated_coreProductCountryData");
+
+
+    /*  merge log update    */
     UPDATE staging.merge_log
     SET "deleted_coreProduct"="_deleted_coreProduct",
 
@@ -157,7 +241,14 @@ BEGIN
         "updated_coreProductBarcodes"="_updated_coreProductBarcodes",
 
         "deleted_coreProductSourceCategories"="_deleted_coreProductSourceCategories",
-        "updated_coreProductSourceCategories"="_updated_coreProductSourceCategories"
+        "updated_coreProductSourceCategories"="_updated_coreProductSourceCategories",
+
+        "deleted_productGroupCoreProducts"="_deleted_productGroupCoreProducts",
+        "updated_productGroupCoreProducts"="_updated_productGroupCoreProducts",
+
+        "deleted_coreProductCountryData"="_deleted_coreProductCountryData",
+        "updated_coreProductCountryData"="_updated_coreProductCountryData"
+
     WHERE id = _merge_id;
 
 
@@ -189,18 +280,23 @@ BEGIN
         RAISE EXCEPTION 'merge id = % does not exist.', merge_id;
     END IF;
 
+    /*  coreProducts */
     INSERT INTO "coreProducts"
     SELECT (log."deleted_coreProduct").*
-    ON CONFLICT DO NOTHING; -- TO DO: REMOVE WHEN ALL TABLES ARE IMPLEMENTED IN THE MERGE FUNCTION, WITH NO RELATED RECORDS LEFT SO COREPRODUCT RECORD CAN BE DELETED.
+    ON CONFLICT DO NOTHING;
+    -- TO DO: REMOVE "ON CONFLICT DO NOTHING" WHEN ALL TABLES ARE IMPLEMENTED IN THE MERGE FUNCTION, WITH NO RELATED RECORDS LEFT SO COREPRODUCT RECORD CAN BE DELETED.
 
+    /*  products */
     UPDATE products
     SET "coreProductId" = (log."old_coreProductId")
     WHERE id = ANY (log."updated_products");
 
+    /*  coreProductBarcodes */
     UPDATE "coreProductBarcodes"
     SET "coreProductId" = (log."old_coreProductId")
     WHERE id = ANY (log."updated_coreProductBarcodes");
 
+    /*  coreProductSourceCategories */
     UPDATE "coreProductSourceCategories"
     SET "coreProductId" = (log."old_coreProductId")
     WHERE id = ANY (log."updated_coreProductSourceCategories");
@@ -212,6 +308,32 @@ BEGIN
     SELECT *
     FROM deleted_records;
 
+
+    /*  productGroupCoreProducts */
+    UPDATE "productGroupCoreProducts"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_productGroupCoreProducts");
+
+    WITH deleted_records AS (SELECT t.*
+                             FROM UNNEST(log."deleted_productGroupCoreProducts") AS t)
+    INSERT
+    INTO "productGroupCoreProducts"
+    SELECT *
+    FROM deleted_records;
+
+    /*  coreProductCountryData  */
+    UPDATE "coreProductCountryData"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_coreProductCountryData");
+
+    WITH deleted_records AS (SELECT t.*
+                             FROM UNNEST(log."deleted_coreProductCountryData") AS t)
+    INSERT
+    INTO "coreProductCountryData"
+    SELECT *
+    FROM deleted_records;
+
+    /*  remove log entry. Maybe archive it?  */
     DELETE
     FROM staging.merge_log
     WHERE id = merge_id;
@@ -224,9 +346,14 @@ SELECT staging.merge(1308689, 601245);
 SELECT *
 FROM staging.merge_log;
 
+SELECT *
+FROM "coreProductCountryData"
+WHERE id = 1127868;
+
+
 SELECT "coreProductId"
-FROM products
-WHERE id = 267666566;
+FROM "coreProductSourceCategories"
+WHERE id = 6377183;
 
 WITH log AS (SELECT *
              FROM staging.merge_log
@@ -242,16 +369,7 @@ SELECT *
 FROM "coreProducts"
 WHERE id = 1308689;
 
-SELECT staging.reverse_merge(1);
+SELECT staging.reverse_merge(2);
 
 
-WITH affected_record AS (SELECT *
-                         FROM staging.merge_log
-                         WHERE id = 1),
-     updated_records AS (SELECT t.id, "old_coreProductId"
-                         FROM affected_record
-                                  CROSS JOIN LATERAL UNNEST("updated_products") AS t(id))
-UPDATE products
-SET "coreProductId"="old_coreProductId"
-FROM updated_records
-WHERE products.id = updated_records.id;
+
