@@ -28,11 +28,6 @@ NOT included in the updates.
 |coreProductTaggings        |YES        | An empty table. New feature?
 +---------------------------+-----------+
 */
-SELECT *
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND LOWER(column_name) LIKE '%prod%gr%';
-
 
 SELECT *
 FROM "coreProducts"
@@ -48,22 +43,33 @@ ALTER TABLE "coreProductBarcodes"
     ADD CONSTRAINT coreProductBarcodes_coreProducts__fk
         FOREIGN KEY ("coreProductId") REFERENCES "coreProducts" (id);
 
+ALTER TABLE "coreProductSourceCategories"
+    ALTER COLUMN "coreProductId" SET NOT NULL;
+
 DROP TABLE IF EXISTS staging.merge_log;
 CREATE TABLE IF NOT EXISTS staging.merge_log
 (
     id                                    serial
         PRIMARY KEY,
+
     "old_coreProductId"                   integer NOT NULL,
     "new_coreProductId"                   integer NOT NULL,
 
     "updated_products"                    integer[],
+
+
     "updated_taxonomyProducts"            integer[],
     "updated_productGroupCoreProducts"    integer[],
+
     "updated_coreProductBarcodes"         integer[],
+
     "updated_coreProductSourceCategories" integer[],
+    "deleted_coreProductSourceCategories" "coreProductSourceCategories"[],
+
     "updated_coreRetailers"               integer[],
 
     "deleted_coreProduct"                 "coreProducts",
+
     "createAt"                            timestamptz DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -74,12 +80,16 @@ CREATE OR REPLACE FUNCTION staging.merge("old_coreProductId" integer, "new_coreP
 AS
 $$
 DECLARE
-    _merge_id              integer;
-    "affected_coreProduct" "coreProducts"%ROWTYPE;
+    _merge_id                              integer;
+    "_deleted_coreProduct"                 "coreProducts";
+    "_updated_products"                    integer[];
+    "_updated_coreProductBarcodes"         integer[];
+    "_updated_coreProductSourceCategories" integer[];
+    "_deleted_coreProductSourceCategories" "coreProductSourceCategories"[];
 BEGIN
 
     SELECT *
-    INTO "affected_coreProduct"
+    INTO "_deleted_coreProduct"
     FROM "coreProducts"
     WHERE id = "old_coreProductId";
 
@@ -95,21 +105,59 @@ BEGIN
     END IF;
 
     INSERT INTO staging.merge_log("old_coreProductId", "new_coreProductId", "deleted_coreProduct")
-    VALUES ("old_coreProductId", "new_coreProductId", "affected_coreProduct")
+    VALUES ("old_coreProductId", "new_coreProductId", "_deleted_coreProduct")
     RETURNING id INTO _merge_id;
 
-    CREATE TEMPORARY TABLE merge_updated_products ON COMMIT DROP AS
     WITH upd AS (
         UPDATE products
             SET "coreProductId" = "new_coreProductId"
             WHERE "coreProductId" = "old_coreProductId"
             RETURNING id)
-    SELECT ARRAY_AGG(id) AS updated_ids
+    SELECT ARRAY_AGG(id)
+    INTO "_updated_products"
     FROM upd;
 
+
+    WITH upd AS (
+        UPDATE "coreProductBarcodes"
+            SET "coreProductId" = "new_coreProductId"
+            WHERE "coreProductId" = "old_coreProductId"
+            RETURNING id)
+    SELECT ARRAY_AGG(id)
+    INTO "_updated_coreProductBarcodes"
+    FROM upd;
+
+
+    WITH new AS (SELECT "sourceCategoryId"
+                 FROM "coreProductSourceCategories"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("coreProductSourceCategories")
+    INTO "_deleted_coreProductSourceCategories"
+    FROM "coreProductSourceCategories"
+             INNER JOIN new USING ("sourceCategoryId")
+    WHERE "coreProductId" = "old_coreProductId";
+
+
+    WITH new AS (SELECT "sourceCategoryId"
+                 FROM "coreProductSourceCategories"
+                 WHERE "coreProductId" = "new_coreProductId")
+    SELECT ARRAY_AGG("id")
+    INTO "_updated_coreProductSourceCategories"
+    FROM "coreProductSourceCategories"
+             LEFT OUTER JOIN new USING ("sourceCategoryId")
+    WHERE "coreProductId" = "old_coreProductId"
+      AND new."sourceCategoryId" IS NULL;
+
+
     UPDATE staging.merge_log
-    SET updated_products=merge_updated_products.updated_ids
-    FROM merge_updated_products
+    SET "deleted_coreProduct"="_deleted_coreProduct",
+
+        "updated_products"="_updated_products",
+
+        "updated_coreProductBarcodes"="_updated_coreProductBarcodes",
+
+        "deleted_coreProductSourceCategories"="_deleted_coreProductSourceCategories",
+        "updated_coreProductSourceCategories"="_updated_coreProductSourceCategories"
     WHERE id = _merge_id;
 
 
@@ -118,8 +166,6 @@ BEGIN
     FROM "coreProducts"
     WHERE id = "old_coreProductId";
     */
-
-    DROP TABLE merge_updated_products;
 
     RETURN _merge_id;
 END
@@ -131,11 +177,11 @@ CREATE OR REPLACE FUNCTION staging.reverse_merge(merge_id integer) RETURNS void
 AS
 $$
 DECLARE
-    affected_record staging.merge_log%ROWTYPE;
+    log staging.merge_log%ROWTYPE;
 BEGIN
 
     SELECT *
-    INTO affected_record
+    INTO log
     FROM staging.merge_log
     WHERE id = merge_id;
 
@@ -144,22 +190,31 @@ BEGIN
     END IF;
 
     INSERT INTO "coreProducts"
-    SELECT (affected_record."deleted_coreProduct").*;
+    SELECT (log."deleted_coreProduct").*
+    ON CONFLICT DO NOTHING; -- TO DO: REMOVE WHEN ALL TABLES ARE IMPLEMENTED IN THE MERGE FUNCTION, WITH NO RELATED RECORDS LEFT SO COREPRODUCT RECORD CAN BE DELETED.
 
-    CREATE TEMPORARY TABLE merge_reversed_products ON COMMIT DROP AS
-    WITH upd AS (
-        UPDATE products
-            SET "coreProductId" = affected_record."old_coreProductId"
-            WHERE id = ANY (affected_record.updated_products)
-            RETURNING id)
+    UPDATE products
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_products");
+
+    UPDATE "coreProductBarcodes"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_coreProductBarcodes");
+
+    UPDATE "coreProductSourceCategories"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_coreProductSourceCategories");
+
+    WITH deleted_records AS (SELECT t.*
+                             FROM UNNEST(log."deleted_coreProductSourceCategories") AS t)
+    INSERT
+    INTO "coreProductSourceCategories"
     SELECT *
-    FROM upd;
+    FROM deleted_records;
 
     DELETE
     FROM staging.merge_log
     WHERE id = merge_id;
-
-    DROP TABLE merge_reversed_products;
 
 END
 $$;
@@ -173,18 +228,30 @@ SELECT "coreProductId"
 FROM products
 WHERE id = 267666566;
 
-WITH affected_record AS (SELECT *
-                         FROM staging.merge_log
-                         WHERE id = 6)
-SELECT ("deleted_coreProduct").*
-FROM affected_record;
+WITH log AS (SELECT *
+             FROM staging.merge_log
+             WHERE id = 1),
+     deleted_records AS (SELECT t.*
+                         FROM log
+                                  CROSS JOIN LATERAL UNNEST("deleted_coreProductSourceCategories") AS t)
+SELECT *
+FROM deleted_records;
 
 
 SELECT *
 FROM "coreProducts"
 WHERE id = 1308689;
 
-SELECT staging.reverse_merge(6);
+SELECT staging.reverse_merge(1);
 
 
-
+WITH affected_record AS (SELECT *
+                         FROM staging.merge_log
+                         WHERE id = 1),
+     updated_records AS (SELECT t.id, "old_coreProductId"
+                         FROM affected_record
+                                  CROSS JOIN LATERAL UNNEST("updated_products") AS t(id))
+UPDATE products
+SET "coreProductId"="old_coreProductId"
+FROM updated_records
+WHERE products.id = updated_records.id;
