@@ -84,7 +84,17 @@ FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
  */
 
-
+WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
+                  FROM staging.debug_products
+                  GROUP BY test_run_id, "retailerId", "sourceType")
+SELECT run_at::date,
+       COUNT(*)                          AS run_count,
+       SUM(product_count)                AS product_count,
+       SUM(execution_time) / (1000 * 60) AS execution_time
+FROM staging.debug_test_run
+         INNER JOIN prod_cnt USING (id)
+GROUP BY 1
+ORDER BY 1 DESC;
 
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
