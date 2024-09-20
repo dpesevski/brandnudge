@@ -120,6 +120,7 @@ BEGIN
     VALUES ("old_coreProductId", "new_coreProductId", "_deleted_coreProduct")
     RETURNING id INTO _merge_id;
 
+    /*  products */
     WITH upd AS (
         UPDATE products
             SET "coreProductId" = "new_coreProductId"
@@ -129,7 +130,7 @@ BEGIN
     INTO "_updated_products"
     FROM upd;
 
-
+    /*  coreProductBarcodes */
     WITH upd AS (
         UPDATE "coreProductBarcodes"
             SET "coreProductId" = "new_coreProductId"
@@ -138,6 +139,38 @@ BEGIN
     SELECT ARRAY_AGG(id)
     INTO "_updated_coreProductBarcodes"
     FROM upd;
+
+    /*
+        /*  another approach for updates/deletes    */
+        /*  coreProductSourceCategories v.2 */
+
+        /*  first delete records in conflict with the UQ constraint */
+        WITH records_in_conflict AS (SELECT old.id
+                                     FROM "coreProductSourceCategories" AS old
+                                              INNER JOIN "coreProductSourceCategories" AS new
+                                                         ON (old."coreProductId" = "old_coreProductId" AND
+                                                             new."coreProductId" = "new_coreProductId" AND
+                                                             old."sourceCategoryId" = new."sourceCategoryId")),
+             deleted AS (
+                 DELETE
+                     FROM "coreProductSourceCategories" USING records_in_conflict
+                         WHERE "coreProductSourceCategories".id = records_in_conflict.id
+                         RETURNING "coreProductSourceCategories".*) -- watchout on the order of the columns here to match the order of columns in table definition
+        SELECT ARRAY_AGG(deleted)
+        INTO "_deleted_coreProductSourceCategories"
+        FROM deleted;
+
+        /*  now is safe to update the rest  */
+        WITH upd AS (
+            UPDATE "coreProductSourceCategories"
+                SET "coreProductId" = "new_coreProductId"
+                WHERE "coreProductId" = "old_coreProductId"
+                RETURNING id)
+        SELECT ARRAY_AGG(id)
+        INTO "_updated_coreProductSourceCategories"
+        FROM upd;
+
+    */
 
     /*  coreProductSourceCategories */
     WITH new AS (SELECT "sourceCategoryId"
