@@ -34,3 +34,10 @@
 
 # mpeltonen/sbt-idea plugin
 .idea_modules/
+.idea/.name
+.idea/bn.iml
+.idea/brandnudge.iml
+.idea/dataSources.xml
+.idea/sqldialects.xml
+.idea/brandnudge.iml
+.idea/dataSources.xml
