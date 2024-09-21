@@ -31,8 +31,26 @@ NOT included in the updates.
 +---------------------------+-----------+
 */
 
-SELECT *
-FROM "coreProductCountryData";
+
+/*  taxonomyProducts
+    =============================================================
+
+
+*/
+
+SELECT "taxonomyId", "coreProductId", retailer, COUNT(*), STRING_AGG(DISTINCT "sourceId", ', ') AS "sourceIds"
+FROM "taxonomyProducts"
+GROUP BY 1, 2, 3
+HAVING COUNT(*) > 1
+ORDER BY COUNT(*) DESC;
+
+SELECT "coreProductId",
+       COUNT(*),
+       STRING_AGG(DISTINCT "taxonomyId", ', ') AS "taxonomyIds",
+       STRING_AGG(DISTINCT "sourceId", ', ')   AS "sourceIds"
+FROM "taxonomyProducts"
+GROUP BY 1
+ORDER BY COUNT(*);
 
 
 /*  pre-script, add missing constraints */
@@ -57,10 +75,9 @@ CREATE TABLE IF NOT EXISTS staging.merge_log
     "old_coreProductId"                   integer NOT NULL,
     "new_coreProductId"                   integer NOT NULL,
 
+    "deleted_coreProduct"                 "coreProducts",
+
     "updated_products"                    integer[],
-
-
-    "updated_taxonomyProducts"            integer[],
 
     "updated_coreProductBarcodes"         integer[],
 
@@ -73,9 +90,11 @@ CREATE TABLE IF NOT EXISTS staging.merge_log
     "updated_coreProductCountryData"      integer[],
     "deleted_coreProductCountryData"      "coreProductCountryData"[],
 
-    "updated_coreRetailers"               integer[],
+    "updated_taxonomyProducts"            integer[],
+    "deleted_taxonomyProducts"            "taxonomyProducts"[],
 
-    "deleted_coreProduct"                 "coreProducts",
+    "updated_coreRetailers"               integer[],
+    "deleted_coreRetailers"               "coreRetailers"[],
 
     "createAt"                            timestamptz DEFAULT CURRENT_TIMESTAMP
 );
@@ -87,27 +106,26 @@ CREATE OR REPLACE FUNCTION staging.merge("old_coreProductId" integer, "new_coreP
 AS
 $$
 DECLARE
-    _merge_id                              integer;
-    "_deleted_coreProduct"                 "coreProducts";
-    "_updated_products"                    integer[];
-    "_updated_coreProductBarcodes"         integer[];
-    "_updated_coreProductSourceCategories" integer[];
-    "_deleted_coreProductSourceCategories" "coreProductSourceCategories"[];
-    "_updated_productGroupCoreProducts"    integer[];
-    "_deleted_productGroupCoreProducts"    "productGroupCoreProducts"[];
-    "_updated_coreProductCountryData"      integer[];
-    "_deleted_coreProductCountryData"      "coreProductCountryData"[];
+    log_entry_id                          integer;
+    "deleted_coreProduct"                 "coreProducts";
+    "updated_products"                    integer[];
+    "updated_coreProductBarcodes"         integer[];
+    "updated_coreProductSourceCategories" integer[];
+    "deleted_coreProductSourceCategories" "coreProductSourceCategories"[];
+    "updated_productGroupCoreProducts"    integer[];
+    "deleted_productGroupCoreProducts"    "productGroupCoreProducts"[];
+    "updated_coreProductCountryData"      integer[];
+    "deleted_coreProductCountryData"      "coreProductCountryData"[];
+    "updated_taxonomyProducts"            integer[];
+    "deleted_taxonomyProducts"            "taxonomyProducts"[];
+    "updated_coreRetailers"               integer[];
+    "deleted_coreRetailers"               "coreRetailers"[];
 
 BEGIN
-
-    SELECT *
-    INTO "_deleted_coreProduct"
-    FROM "coreProducts"
-    WHERE id = "old_coreProductId";
-
-    IF NOT FOUND THEN
-        RAISE NOTICE 'old coreProductId = % not found.', "old_coreProductId";
-        RETURN -1;
+    IF NOT EXISTS(SELECT *
+                  FROM "coreProducts"
+                  WHERE id = "old_coreProductId") THEN
+        RAISE EXCEPTION 'old coreProductId = % not found.', "old_coreProductId";
     END IF;
 
     IF NOT EXISTS (SELECT *
@@ -116,10 +134,6 @@ BEGIN
         RAISE EXCEPTION 'new coreProductId = % not found.', "new_coreProductId";
     END IF;
 
-    INSERT INTO staging.merge_log("old_coreProductId", "new_coreProductId", "deleted_coreProduct")
-    VALUES ("old_coreProductId", "new_coreProductId", "_deleted_coreProduct")
-    RETURNING id INTO _merge_id;
-
     /*  products */
     WITH upd AS (
         UPDATE products
@@ -127,7 +141,7 @@ BEGIN
             WHERE "coreProductId" = "old_coreProductId"
             RETURNING id)
     SELECT ARRAY_AGG(id)
-    INTO "_updated_products"
+    INTO "updated_products"
     FROM upd;
 
     /*  coreProductBarcodes */
@@ -137,78 +151,78 @@ BEGIN
             WHERE "coreProductId" = "old_coreProductId"
             RETURNING id)
     SELECT ARRAY_AGG(id)
-    INTO "_updated_coreProductBarcodes"
+    INTO "updated_coreProductBarcodes"
     FROM upd;
 
+
+    /*  another approach for updates/deletes    */
+    /*  coreProductSourceCategories v.2 */
+
+    /*  first delete records in conflict with the UQ constraint */
+    WITH records_in_conflict AS (SELECT old.id
+                                 FROM "coreProductSourceCategories" AS old
+                                          INNER JOIN "coreProductSourceCategories" AS new
+                                                     ON (old."coreProductId" = "old_coreProductId" AND
+                                                         new."coreProductId" = "new_coreProductId" AND
+                                                         old."sourceCategoryId" = new."sourceCategoryId")),
+         deleted AS (
+             DELETE
+                 FROM "coreProductSourceCategories" USING records_in_conflict
+                     WHERE "coreProductSourceCategories".id = records_in_conflict.id
+                     RETURNING "coreProductSourceCategories".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(deleted)
+    INTO "deleted_coreProductSourceCategories"
+    FROM deleted;
+
+    /*  now is safe to update the rest  */
+    WITH upd AS (
+        UPDATE "coreProductSourceCategories"
+            SET "coreProductId" = "new_coreProductId"
+            WHERE "coreProductId" = "old_coreProductId"
+            RETURNING id)
+    SELECT ARRAY_AGG(id)
+    INTO "updated_coreProductSourceCategories"
+    FROM upd;
+
+
     /*
-        /*  another approach for updates/deletes    */
-        /*  coreProductSourceCategories v.2 */
+        /*  coreProductSourceCategories */
+        WITH new AS (SELECT "sourceCategoryId"
+                     FROM "coreProductSourceCategories"
+                     WHERE "coreProductId" = "new_coreProductId")
+        SELECT ARRAY_AGG("coreProductSourceCategories")
+        INTO "deleted_coreProductSourceCategories"
+        FROM "coreProductSourceCategories"
+                 INNER JOIN new USING ("sourceCategoryId")
+        WHERE "coreProductId" = "old_coreProductId";
 
-        /*  first delete records in conflict with the UQ constraint */
-        WITH records_in_conflict AS (SELECT old.id
-                                     FROM "coreProductSourceCategories" AS old
-                                              INNER JOIN "coreProductSourceCategories" AS new
-                                                         ON (old."coreProductId" = "old_coreProductId" AND
-                                                             new."coreProductId" = "new_coreProductId" AND
-                                                             old."sourceCategoryId" = new."sourceCategoryId")),
-             deleted AS (
-                 DELETE
-                     FROM "coreProductSourceCategories" USING records_in_conflict
-                         WHERE "coreProductSourceCategories".id = records_in_conflict.id
-                         RETURNING "coreProductSourceCategories".*) -- watchout on the order of the columns here to match the order of columns in table definition
-        SELECT ARRAY_AGG(deleted)
-        INTO "_deleted_coreProductSourceCategories"
-        FROM deleted;
 
-        /*  now is safe to update the rest  */
-        WITH upd AS (
-            UPDATE "coreProductSourceCategories"
-                SET "coreProductId" = "new_coreProductId"
-                WHERE "coreProductId" = "old_coreProductId"
-                RETURNING id)
-        SELECT ARRAY_AGG(id)
-        INTO "_updated_coreProductSourceCategories"
-        FROM upd;
+        WITH new AS (SELECT "sourceCategoryId"
+                     FROM "coreProductSourceCategories"
+                     WHERE "coreProductId" = "new_coreProductId")
+        SELECT ARRAY_AGG("id")
+        INTO "updated_coreProductSourceCategories"
+        FROM "coreProductSourceCategories"
+                 LEFT OUTER JOIN new USING ("sourceCategoryId")
+        WHERE "coreProductId" = "old_coreProductId"
+          AND new."sourceCategoryId" IS NULL;
 
+
+        WITH deleted AS (SELECT t.id FROM UNNEST("deleted_coreProductSourceCategories") AS t)
+        DELETE
+        FROM "coreProductSourceCategories" USING deleted
+        WHERE "coreProductSourceCategories".id = deleted.id;
+
+        UPDATE "coreProductSourceCategories"
+        SET "coreProductId" = "new_coreProductId"
+        WHERE id = ANY ("updated_coreProductSourceCategories");
     */
-
-    /*  coreProductSourceCategories */
-    WITH new AS (SELECT "sourceCategoryId"
-                 FROM "coreProductSourceCategories"
-                 WHERE "coreProductId" = "new_coreProductId")
-    SELECT ARRAY_AGG("coreProductSourceCategories")
-    INTO "_deleted_coreProductSourceCategories"
-    FROM "coreProductSourceCategories"
-             INNER JOIN new USING ("sourceCategoryId")
-    WHERE "coreProductId" = "old_coreProductId";
-
-
-    WITH new AS (SELECT "sourceCategoryId"
-                 FROM "coreProductSourceCategories"
-                 WHERE "coreProductId" = "new_coreProductId")
-    SELECT ARRAY_AGG("id")
-    INTO "_updated_coreProductSourceCategories"
-    FROM "coreProductSourceCategories"
-             LEFT OUTER JOIN new USING ("sourceCategoryId")
-    WHERE "coreProductId" = "old_coreProductId"
-      AND new."sourceCategoryId" IS NULL;
-
-
-    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_coreProductSourceCategories") AS t)
-    DELETE
-    FROM "coreProductSourceCategories" USING deleted
-    WHERE "coreProductSourceCategories".id = deleted.id;
-
-    UPDATE "coreProductSourceCategories"
-    SET "coreProductId" = "new_coreProductId"
-    WHERE id = ANY ("_updated_coreProductSourceCategories");
-
     /*  productGroupCoreProducts    */
     WITH new AS (SELECT "productGroupId"
                  FROM "productGroupCoreProducts"
                  WHERE "coreProductId" = "new_coreProductId")
     SELECT ARRAY_AGG("productGroupCoreProducts")
-    INTO "_deleted_productGroupCoreProducts"
+    INTO "deleted_productGroupCoreProducts"
     FROM "productGroupCoreProducts"
              INNER JOIN new USING ("productGroupId")
     WHERE "coreProductId" = "old_coreProductId";
@@ -217,21 +231,21 @@ BEGIN
                  FROM "productGroupCoreProducts"
                  WHERE "coreProductId" = "new_coreProductId")
     SELECT ARRAY_AGG("id")
-    INTO "_updated_productGroupCoreProducts"
+    INTO "updated_productGroupCoreProducts"
     FROM "productGroupCoreProducts"
              LEFT OUTER JOIN new USING ("productGroupId")
     WHERE "coreProductId" = "old_coreProductId"
       AND new."productGroupId" IS NULL;
 
 
-    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_productGroupCoreProducts") AS t)
+    WITH deleted AS (SELECT t.id FROM UNNEST("deleted_productGroupCoreProducts") AS t)
     DELETE
     FROM "productGroupCoreProducts" USING deleted
     WHERE "productGroupCoreProducts".id = deleted.id;
 
     UPDATE "productGroupCoreProducts"
     SET "coreProductId" = "new_coreProductId"
-    WHERE id = ANY ("_updated_productGroupCoreProducts");
+    WHERE id = ANY ("updated_productGroupCoreProducts");
 
 
     /*  coreProductCountryData  */
@@ -239,7 +253,7 @@ BEGIN
                  FROM "coreProductCountryData"
                  WHERE "coreProductId" = "new_coreProductId")
     SELECT ARRAY_AGG("coreProductCountryData")
-    INTO "_deleted_coreProductCountryData"
+    INTO "deleted_coreProductCountryData"
     FROM "coreProductCountryData"
              INNER JOIN new USING ("countryId")
     WHERE "coreProductId" = "old_coreProductId";
@@ -248,50 +262,102 @@ BEGIN
                  FROM "coreProductCountryData"
                  WHERE "coreProductId" = "new_coreProductId")
     SELECT ARRAY_AGG("id")
-    INTO "_updated_coreProductCountryData"
+    INTO "updated_coreProductCountryData"
     FROM "coreProductCountryData"
              LEFT OUTER JOIN new USING ("countryId")
     WHERE "coreProductId" = "old_coreProductId"
       AND new."countryId" IS NULL;
 
 
-    WITH deleted AS (SELECT t.id FROM UNNEST("_deleted_coreProductCountryData") AS t)
+    WITH deleted AS (SELECT t.id FROM UNNEST("deleted_coreProductCountryData") AS t)
     DELETE
     FROM "coreProductCountryData" USING deleted
     WHERE "coreProductCountryData".id = deleted.id;
 
     UPDATE "coreProductCountryData"
     SET "coreProductId" = "new_coreProductId"
-    WHERE id = ANY ("_updated_coreProductCountryData");
+    WHERE id = ANY ("updated_coreProductCountryData");
+
+    /*  taxonomyProducts v.2 */
+    WITH records_in_conflict AS (SELECT old.id
+                                 FROM "taxonomyProducts" AS old
+                                          INNER JOIN "taxonomyProducts" AS new
+                                                     ON (old."coreProductId" = "old_coreProductId" AND
+                                                         new."coreProductId" = "new_coreProductId" AND
+                                                         old."taxonomyId" = new."taxonomyId" AND
+                                                         old."sourceId" = new."sourceId")),
+         deleted AS (
+             DELETE
+                 FROM "taxonomyProducts" USING records_in_conflict
+                     WHERE "taxonomyProducts".id = records_in_conflict.id
+                     RETURNING "taxonomyProducts".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(deleted)
+    INTO "deleted_taxonomyProducts"
+    FROM deleted;
+
+    WITH upd AS (
+        UPDATE "taxonomyProducts"
+            SET "coreProductId" = "new_coreProductId"
+            WHERE "coreProductId" = "old_coreProductId"
+            RETURNING id)
+    SELECT ARRAY_AGG(id)
+    INTO "updated_taxonomyProducts"
+    FROM upd;
+
+    /*  coreRetailers v.2 */
+    WITH records_in_conflict AS (SELECT old.id
+                                 FROM "coreRetailers" AS old
+                                          INNER JOIN "coreRetailers" AS new
+                                                     ON (old."coreProductId" = "old_coreProductId" AND
+                                                         new."coreProductId" = "new_coreProductId" AND
+                                                         old."retailerId" = new."retailerId" AND
+                                                         old."productId" = new."productId")),
+         deleted AS (
+             DELETE
+                 FROM "coreRetailers" USING records_in_conflict
+                     WHERE "coreRetailers".id = records_in_conflict.id
+                     RETURNING "coreRetailers".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(deleted)
+    INTO "deleted_coreRetailers"
+    FROM deleted;
+
+    WITH upd AS (
+        UPDATE "coreRetailers"
+            SET "coreProductId" = "new_coreProductId"
+            WHERE "coreProductId" = "old_coreProductId"
+            RETURNING id)
+    SELECT ARRAY_AGG(id)
+    INTO "updated_coreRetailers"
+    FROM upd;
 
 
-    /*  merge log update    */
-    UPDATE staging.merge_log
-    SET "deleted_coreProduct"="_deleted_coreProduct",
-
-        "updated_products"="_updated_products",
-
-        "updated_coreProductBarcodes"="_updated_coreProductBarcodes",
-
-        "deleted_coreProductSourceCategories"="_deleted_coreProductSourceCategories",
-        "updated_coreProductSourceCategories"="_updated_coreProductSourceCategories",
-
-        "deleted_productGroupCoreProducts"="_deleted_productGroupCoreProducts",
-        "updated_productGroupCoreProducts"="_updated_productGroupCoreProducts",
-
-        "deleted_coreProductCountryData"="_deleted_coreProductCountryData",
-        "updated_coreProductCountryData"="_updated_coreProductCountryData"
-
-    WHERE id = _merge_id;
+    /*  DELETE core Product   */
+    WITH deleted
+             AS (
+            DELETE
+                FROM "coreProducts"
+                    WHERE id = "old_coreProductId"
+                    RETURNING *) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT *
+    INTO "deleted_coreProduct"
+    FROM deleted;
 
 
-    /*  DELETE core Product
-    DELETE
-    FROM "coreProducts"
-    WHERE id = "old_coreProductId";
-    */
+    INSERT INTO staging.merge_log("old_coreProductId", "new_coreProductId", "deleted_coreProduct", updated_products,
+                                  "updated_coreProductBarcodes", "updated_coreProductSourceCategories",
+                                  "deleted_coreProductSourceCategories", "updated_productGroupCoreProducts",
+                                  "deleted_productGroupCoreProducts", "updated_coreProductCountryData",
+                                  "deleted_coreProductCountryData", "updated_taxonomyProducts",
+                                  "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers")
+    VALUES ("old_coreProductId", "new_coreProductId", "deleted_coreProduct", updated_products,
+            "updated_coreProductBarcodes", "updated_coreProductSourceCategories",
+            "deleted_coreProductSourceCategories", "updated_productGroupCoreProducts",
+            "deleted_productGroupCoreProducts", "updated_coreProductCountryData",
+            "deleted_coreProductCountryData", "updated_taxonomyProducts",
+            "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers")
+    RETURNING id INTO log_entry_id;
 
-    RETURN _merge_id;
+    RETURN log_entry_id;
 END
 $$;
 
@@ -315,8 +381,8 @@ BEGIN
 
     /*  coreProducts */
     INSERT INTO "coreProducts"
-    SELECT (log."deleted_coreProduct").*
-    ON CONFLICT DO NOTHING;
+    SELECT (log."deleted_coreProduct").*;
+    -- ON CONFLICT DO NOTHING;
     -- TO DO: REMOVE "ON CONFLICT DO NOTHING" WHEN ALL TABLES ARE IMPLEMENTED IN THE MERGE FUNCTION, WITH NO RELATED RECORDS LEFT SO COREPRODUCT RECORD CAN BE DELETED.
 
     /*  products */
@@ -366,6 +432,33 @@ BEGIN
     SELECT *
     FROM deleted_records;
 
+
+    /*  coreProductCountryData  */
+    UPDATE "taxonomyProducts"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_taxonomyProducts");
+
+    WITH deleted_records AS (SELECT t.*
+                             FROM UNNEST(log."deleted_taxonomyProducts") AS t)
+    INSERT
+    INTO "taxonomyProducts"
+    SELECT *
+    FROM deleted_records;
+
+
+    /*  coreRetailers  */
+    UPDATE "coreRetailers"
+    SET "coreProductId" = (log."old_coreProductId")
+    WHERE id = ANY (log."updated_coreRetailers");
+
+    WITH deleted_records AS (SELECT t.*
+                             FROM UNNEST(log."deleted_coreRetailers") AS t)
+    INSERT
+    INTO "coreRetailers"
+    SELECT *
+    FROM deleted_records;
+
+
     /*  remove log entry. Maybe archive it?  */
     DELETE
     FROM staging.merge_log
@@ -374,19 +467,19 @@ BEGIN
 END
 $$;
 
-SELECT staging.merge(1308689, 601245);
+SELECT staging.merge(1306933, 752737);
 
 SELECT *
 FROM staging.merge_log;
 
 SELECT *
 FROM "coreProductCountryData"
-WHERE id = 1127868;
+WHERE id = 1126640;
 
 
 SELECT "coreProductId"
 FROM "coreProductSourceCategories"
-WHERE id = 6377183;
+WHERE id = 2872384;
 
 WITH log AS (SELECT *
              FROM staging.merge_log
@@ -400,9 +493,9 @@ FROM deleted_records;
 
 SELECT *
 FROM "coreProducts"
-WHERE id = 1308689;
+WHERE id = 1306933;
 
-SELECT staging.reverse_merge(2);
+SELECT staging.reverse_merge(1);
 
 
 
