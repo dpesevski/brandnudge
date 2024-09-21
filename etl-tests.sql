@@ -1,4 +1,7 @@
 /*
+
+CREATE EXTENSION IF NOT EXISTS ltree;
+
 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
 CREATE SERVER proddb_fdw FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com', port '5432', dbname 'brandnudge');
 CREATE USER MAPPING FOR postgres SERVER proddb_fdw OPTIONS (user 'dejan_user', password 'nCIqhxXgwItIGtK');
@@ -196,7 +199,7 @@ SELECT *, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id > 27241
+                     WHERE id > 27670
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");
@@ -207,7 +210,7 @@ SELECT *, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id > 27241
+                     WHERE id > 27670
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");
