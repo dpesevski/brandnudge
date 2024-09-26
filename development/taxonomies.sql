@@ -113,11 +113,26 @@ FROM "taxonomies"
 WHERE retailer = 'amazon'
 ORDER BY ltpath;
 
-/*  Comparison of "taxonomies" and "retailerTaxonomies"
+/*
+    "taxonomies" and "taxonomyProducts"
+    ============================================================================================
+
+    "taxonomyProducts" relates to taxonomies. As a redundancy, retailer is repeated though is already defined in taxonomies.
+    The table links a taxonomyId to a coreProductId.
+
+    "sourceId" here seems unnecessary and adds up to the confusion. "sourceId" contributes to more records for each "coreProductId". It should not relate directly to a taxonomy.
+    We may have a table linking all the sourceId to taxonomy, but first we need to have a clear/base table linking all the taxonomies with a coreProduct.
+*/
+SELECT *
+FROM "taxonomyProducts"
+WHERE "taxonomyId" = 618568;
+
+
+/*  "taxonomies" and "retailerTaxonomies"
     =======================================================================================================================
 
     "taxonomies" relates to a retailer. "retailerTaxonomies", as the name suggest, also relates to a retailer.
-    Both "retailerTaxonomies" and taxonomies try to define taxonomies for a specific retailer
+    Both "retailerTaxonomies" and taxonomies try to define taxonomies for a specific retailer.
     "retailerTaxonomies" contains a URL, which points to retailer's website "category" page.
     Looks like "taxonomies" are manually edited, while "retailerTaxonomies" are loaded from retailers directly, like the products.
 
@@ -152,18 +167,6 @@ GROUP BY 1;
 SELECT TO_CHAR("createdAt", 'YYYY-MM') AS "createdAt", COUNT(*)
 FROM "retailerTaxonomies"
 GROUP BY 1;
-
-
-/*
-    "taxonomyProducts" relates to taxonomies. As a redundancy, retailer is repeated though is already defined in taxonomies.
-    The table links a taxonomyId to a coreProductId.
-
-    "sourceId" here seems unnecessary and adds up to the confusion. "sourceId" contributes to more records for each "coreProductId". It should not relate directly to a taxonomy.
-    We may have a table linking all the sourceId to taxonomy, but first we need to have a clear/base table linking all the taxonomies with a coreProduct.
-*/
-SELECT *
-FROM "taxonomyProducts"
-WHERE "taxonomyId" = 618568;
 
 
 /*
@@ -210,3 +213,35 @@ WHERE parent_txn.retailer != txn.retailer;
         ADD CONSTRAINT taxonomies_taxonomies_fk
             FOREIGN KEY (retailer, "taxonomyId") REFERENCES taxonomies (retailer, id);
 */
+
+/*
+
+There are many records in the retailerTaxonomies which form duplicate trees.
+For example, the following query results in 9 records all having same value for the attribute "path":
+
+They are all from same retailer (10-waitrose), and the rest of the attributes are all same including the URL and the new ones from the statuses.
+These only differ in the id and the createdAt timestamps.
+Thease are all archived now.
+Feels like the code which is ingesting the retailer's taxonomies does not always recognise existing ones and re-creates it.*/
+
+SELECT *
+FROM "retailerTaxonomies"
+WHERE path = 'Baby, Child & Parent\Nappies & Potty Training\15 Kg+ (Size 6)';
+
+
+WITH paths AS (SELECT path, COUNT(*) AS count
+               FROM "retailerTaxonomies"
+               GROUP BY path
+               HAVING COUNT(*) > 1)
+SELECT COUNT(*)
+FROM paths 106K/163K;
+
+
+SELECT "coreProductCountryData"."title",  *
+FROM "coreProducts"
+         JOIN "coreProductCountryData" ON "coreProducts".id = "coreProductCountryData"."coreProductId"
+WHERE "coreProducts".id IN (
+                            741198,
+                            737278,
+                            731744
+    )

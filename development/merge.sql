@@ -1,34 +1,56 @@
 /*
-+---------------------------+-----------+-------------------------------------------------------------------------------------------+
-|table_name                 |is_nullable| Comments                                                                                  |
-+---------------------------+-----------+-------------------------------------------------------------------------------------------+
-|products                   |NO         |
-|taxonomyProducts           |NO         | no UQ constraint, but should be enforced to avoid duplicates after a merge.
-|productGroupCoreProducts   |YES        | no NOT NULL constraint. no UQ constraint, but should be enforced to avoid duplicates after a merge.
++---------------------------+-------------------------------------------------------------------------------------------+
+|table_name                 | Comments                                                                                  |
++---------------------------+-------------------------------------------------------------------------------------------+
+|products                   |
+|taxonomyProducts           | no UQ constraint, but should be enforced to avoid duplicates after a merge.
+|productGroupCoreProducts   | no NOT NULL constraint. no UQ constraint, but should be enforced to avoid duplicates after a merge.
                                             product groups are not used with coreProducts for the past 4 years
                                                 SELECT *
                                                 FROM "coreProducts"
                                                 WHERE "productGroupId" IS NOT NULL
                                                 ORDER BY "createdAt" DESC;
 
-|coreProductBarcodes        |YES        | there is no NOT NULL constraint on coreProductId, and no FK to coreProducts. However, the data is ok, and these constraints can be added immediately,
-|coreProductSourceCategories|YES        | FK to coreProducts exists, only add NOT NULL constraint. UQ constraint exist on ("sourceCategoryId", "coreProductId"). When merging, if a record with a ("sourceCategoryId", new "coreProductId") exists, the record being merged should be deleted.
-|coreProductCountryData     |YES        | FK to coreProducts exists as well, add NOT NULL constraint. UQ constraint exist on ("coreProductId", "countryId"). When merging, if a record with a ("countryId", new "coreProductId") exists, the record being merged should be deleted.
+|coreProductBarcodes        | there is no NOT NULL constraint on coreProductId, and no FK to coreProducts. However, the data is ok, and these constraints can be added immediately,
+|coreProductSourceCategories| FK to coreProducts exists, only add NOT NULL constraint. UQ constraint exist on ("sourceCategoryId", "coreProductId"). When merging, if a record with a ("sourceCategoryId", new "coreProductId") exists, the record being merged should be deleted.
+|coreProductCountryData     | FK to coreProducts exists as well, add NOT NULL constraint. UQ constraint exist on ("coreProductId", "countryId"). When merging, if a record with a ("countryId", new "coreProductId") exists, the record being merged should be deleted.
 
 
-|coreRetailers              |YES        | there is no NOT NULL constraint on coreProductId and no FK to coreProducts. One record relates to non-existing coreProductId(36693). Other then this constraints can be added immediately,
-                                          There is UQ on ("coreProductId", "retailerId", "productId"). However, this table should split in 2
-                                            - one, keeping the name but with UQ ("coreProductId", "retailerId"), and
-                                            - additional one,  a copy of the original, with UQ on ("coreProductId", "retailerId", "productId").
-                                          Most of the tables relating to coreRetailers are relating on the coreProduct, not the sourceId(productId).
+TO DO:  1) Handle table "productGroupCoreProducts"
 
 
-NOT included in the updates.
-==========================================================================
-|mappingSuggestions         |NO         | This table has less records than mappingLogs (when counting distinct coreProductId,suggestedProductId)
-|coreProductsOverride       |YES        | A small table, only 3 records. Looks like coreRetailers.
-|coreProductTaggings        |YES        | An empty table. New feature?
-+---------------------------+-----------+
+|coreRetailers              | there is no NOT NULL constraint on coreProductId and no FK to coreProducts. One record relates to non-existing coreProductId(36693). Other then this constraints can be added immediately,
+                                  There is UQ on ("coreProductId", "retailerId", "productId"). However, this table should split in 2
+                                    - one, keeping the name but with UQ ("coreProductId", "retailerId"), and
+                                    - additional one,  a copy of the original, with UQ on ("coreProductId", "retailerId", "productId").
+                                  Most of the tables relating to coreRetailers are relating on the coreProduct, not the sourceId(productId).
+
+TO DO:  1) Handle tables relating to "coreRetailers"
+            - "reviews"
+            - "coreRetailerDates"
+            - "coreRetailerTaxonomies"
+            - "bannersProducts"
+            - **additional table, coreRetailerSources for linking all the sourceIds to a coreRetailer record (retailerId, coreProductId)
+
+        These tables will not be updated in case coreRetailers is updated to link to a new coreProductId.
+        They will only get updated in case the coreRetailer record is deleted (so we won't end up with duplicate coreProductId in coreRetailers for a single retailerId).
+        It is most probable that this will be the only case, as the new coreProductId should already be present in the coreRetailers table.
+
+        If the coreRetailers record gets deleted, the related records in the above tables will be updated to point to the new coreRetailerId (coreProduct).
+        We will store the ids of these records, in a separate array within the deleted_coreRetailer record, so we can reverse it later if needed.
+
+        The coreRetailer table will have a unique constraint for (retailerId, coreProductId).
+        The additional table, coreRetailerSources, will have a unique constraint for the (retailerId, sourceId), i.e., a single sourceId (within a retailer)
+            will always point only to only one coreRetailer (retailer, coreProduct).
+
+
+
+NOT to be considered in the updates.
+=============================
+|mappingSuggestions         | This table has less records than mappingLogs (when counting distinct coreProductId,suggestedProductId)
+|coreProductsOverride       | A small table, only 3 records. Looks like coreRetailers.
+|coreProductTaggings        | An empty table. New feature?
++---------------------------+-------------------------------------------------------------------------------------------+
 */
 
 
@@ -332,6 +354,8 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'merge id = % does not exist.', merge_id;
     END IF;
+
+    /*  TO DO: We should check if any of the earlier merges relates to the coreProducts of this one, and then apply some logic to prevent creating inconsistency from this reverse.    */
 
     /*  coreProducts */
     INSERT INTO "coreProducts"
