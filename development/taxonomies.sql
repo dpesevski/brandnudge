@@ -123,6 +123,29 @@ ORDER BY ltpath;
     "sourceId" here seems unnecessary and adds up to the confusion. "sourceId" contributes to more records for each "coreProductId". It should not relate directly to a taxonomy.
     We may have a table linking all the sourceId to taxonomy, but first we need to have a clear/base table linking all the taxonomies with a coreProduct.
 */
+
+
+/*  taxonomyProducts
+    =============================================================
+
+
+*/
+
+SELECT "taxonomyId", "coreProductId", retailer, COUNT(*), STRING_AGG(DISTINCT "sourceId", ', ') AS "sourceIds"
+FROM "taxonomyProducts"
+GROUP BY 1, 2, 3
+HAVING COUNT(*) > 1
+ORDER BY COUNT(*) DESC;
+
+SELECT "coreProductId",
+       COUNT(*),
+       STRING_AGG(DISTINCT "taxonomyId", ', ') AS "taxonomyIds",
+       STRING_AGG(DISTINCT "sourceId", ', ')   AS "sourceIds"
+FROM "taxonomyProducts"
+GROUP BY 1
+ORDER BY COUNT(*);
+
+
 SELECT *
 FROM "taxonomyProducts"
 WHERE "taxonomyId" = 618568;

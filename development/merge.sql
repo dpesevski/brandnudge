@@ -54,27 +54,6 @@ NOT to be considered in the updates.
 */
 
 
-/*  taxonomyProducts
-    =============================================================
-
-
-*/
-
-SELECT "taxonomyId", "coreProductId", retailer, COUNT(*), STRING_AGG(DISTINCT "sourceId", ', ') AS "sourceIds"
-FROM "taxonomyProducts"
-GROUP BY 1, 2, 3
-HAVING COUNT(*) > 1
-ORDER BY COUNT(*) DESC;
-
-SELECT "coreProductId",
-       COUNT(*),
-       STRING_AGG(DISTINCT "taxonomyId", ', ') AS "taxonomyIds",
-       STRING_AGG(DISTINCT "sourceId", ', ')   AS "sourceIds"
-FROM "taxonomyProducts"
-GROUP BY 1
-ORDER BY COUNT(*);
-
-
 /*  pre-script, add missing constraints */
 ALTER TABLE "coreProductBarcodes"
     ALTER
