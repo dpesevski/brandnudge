@@ -97,6 +97,12 @@ CREATE TABLE IF NOT EXISTS staging.merge_log
     "updated_coreRetailers"               integer[],
     "deleted_coreRetailers"               "coreRetailers"[],
 
+    "updated_reviews"                     int4range[],
+    "updated_coreRetailerDates"           int4range[],
+    "updated_coreRetailerTaxonomies"      int4range[],
+    "updated_bannersProducts"             int4range[],
+    "updated_coreRetailerSources"         int4range[],
+
     "createAt"                            timestamptz DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -121,6 +127,11 @@ DECLARE
     "deleted_taxonomyProducts"            "taxonomyProducts"[];
     "updated_coreRetailers"               integer[];
     "deleted_coreRetailers"               "coreRetailers"[];
+    "updated_reviews"                     int4range[];
+    "updated_coreRetailerDates"           int4range[];
+    "updated_coreRetailerTaxonomies"      int4range[];
+    "updated_bannersProducts"             int4range[];
+    "updated_coreRetailerSources"         int4range[];
 
 BEGIN
     IF NOT EXISTS(SELECT *
@@ -261,18 +272,88 @@ BEGIN
     FROM upd;
 
     /*  coreRetailers */
-    WITH records_in_conflict AS (SELECT old.id
-                                 FROM "coreRetailers" AS old
-                                          INNER JOIN "coreRetailers" AS new
-                                                     ON (old."coreProductId" = "old_coreProductId" AND
-                                                         new."coreProductId" = "new_coreProductId" AND
-                                                         old."retailerId" = new."retailerId" AND
-                                                         old."productId" = new."productId")),
-         deleted AS (
-             DELETE
-                 FROM "coreRetailers" USING records_in_conflict
-                     WHERE "coreRetailers".id = records_in_conflict.id
-                     RETURNING "coreRetailers".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    /*  create a temporary table "records_in_conflict_coreRetailers" to update both the dependent tables and coreRetailers table */
+    CREATE TEMPORARY TABLE "records_in_conflict_coreRetailers" ON COMMIT DROP AS
+    SELECT old.id AS old_id, new.id AS new_id
+    FROM "coreRetailers" AS old
+             INNER JOIN "coreRetailers" AS new
+                        ON (old."coreProductId" = "old_coreProductId" AND
+                            new."coreProductId" = "new_coreProductId" AND
+                            old."retailerId" = new."retailerId" AND
+                            old."productId" = new."productId");
+
+    /*  handle dependant tables first   */
+
+    /*  reviews */
+    WITH deleted AS (
+        UPDATE
+            reviews
+                SET "coreRetailerId" = records_in_conflict.new_id
+                FROM "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE reviews."coreRetailerId" = records_in_conflict.old_id
+                RETURNING reviews.*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(INT4RANGE(id, "coreRetailerId"))
+    INTO "updated_reviews"
+    FROM deleted;
+
+
+    /*  coreRetailerDates */
+    WITH deleted AS (
+        UPDATE
+            "coreRetailerDates"
+                SET "coreRetailerId" = records_in_conflict.new_id
+                FROM "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE "coreRetailerDates"."coreRetailerId" = records_in_conflict.old_id
+                RETURNING "coreRetailerDates".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(INT4RANGE(id, "coreRetailerId"))
+    INTO "updated_coreRetailerDates"
+    FROM deleted;
+
+
+    /*  coreRetailerTaxonomies */
+    WITH deleted AS (
+        UPDATE
+            "coreRetailerTaxonomies"
+                SET "coreRetailerId" = records_in_conflict.new_id
+                FROM "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE "coreRetailerTaxonomies"."coreRetailerId" = records_in_conflict.old_id
+                RETURNING "coreRetailerTaxonomies".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(INT4RANGE(id, "coreRetailerId"))
+    INTO "updated_coreRetailerTaxonomies"
+    FROM deleted;
+
+
+    /*  bannersProducts */
+    WITH deleted AS (
+        UPDATE
+            "bannersProducts"
+                SET "coreRetailerId" = records_in_conflict.new_id
+                FROM "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE "bannersProducts"."coreRetailerId" = records_in_conflict.old_id
+                RETURNING "bannersProducts".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(INT4RANGE(id, "coreRetailerId"))
+    INTO "updated_bannersProducts"
+    FROM deleted;
+
+
+    /*   coreRetailerSources */
+    WITH deleted AS (
+        UPDATE
+            "coreRetailerSources"
+                SET "coreRetailerId" = records_in_conflict.new_id
+                FROM "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE "coreRetailerSources"."coreRetailerId" = records_in_conflict.old_id
+                RETURNING "coreRetailerSources".*) -- watchout on the order of the columns here to match the order of columns in table definition
+    SELECT ARRAY_AGG(INT4RANGE(id, "coreRetailerId"))
+    INTO "updated_coreRetailerSources"
+    FROM deleted;
+
+    /*  handle coreRetailers   */
+    WITH deleted AS (
+        DELETE
+            FROM "coreRetailers" USING "records_in_conflict_coreRetailers" AS records_in_conflict
+                WHERE "coreRetailers".id = records_in_conflict.old_id
+                RETURNING "coreRetailers".*) -- watchout on the order of the columns here to match the order of columns in table definition
     SELECT ARRAY_AGG(deleted)
     INTO "deleted_coreRetailers"
     FROM deleted;
@@ -303,13 +384,22 @@ BEGIN
                                   "deleted_coreProductSourceCategories", "updated_productGroupCoreProducts",
                                   "deleted_productGroupCoreProducts", "updated_coreProductCountryData",
                                   "deleted_coreProductCountryData", "updated_taxonomyProducts",
-                                  "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers")
+                                  "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers",
+                                  "updated_reviews",
+                                  "updated_coreRetailerDates",
+                                  "updated_coreRetailerTaxonomies",
+                                  "updated_bannersProducts",
+                                  "updated_coreRetailerSources")
     VALUES ("old_coreProductId", "new_coreProductId", "deleted_coreProduct", updated_products,
             "updated_coreProductBarcodes", "updated_coreProductSourceCategories",
             "deleted_coreProductSourceCategories", "updated_productGroupCoreProducts",
             "deleted_productGroupCoreProducts", "updated_coreProductCountryData",
             "deleted_coreProductCountryData", "updated_taxonomyProducts",
-            "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers")
+            "deleted_taxonomyProducts", "updated_coreRetailers", "deleted_coreRetailers", "updated_reviews",
+            "updated_coreRetailerDates",
+            "updated_coreRetailerTaxonomies",
+            "updated_bannersProducts",
+            "updated_coreRetailerSources")
     RETURNING id INTO log_entry_id;
 
     RETURN log_entry_id;
@@ -414,6 +504,45 @@ BEGIN
     INTO "coreRetailers"
     SELECT *
     FROM deleted_records;
+
+    /*  update dependant tables to coreRetailers    */
+
+    - ""
+    - ""
+    - ""
+
+
+    /*  reviews */
+    WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
+                             FROM UNNEST(log."updated_coreRetailerDates") AS t)
+    UPDATE "coreRetailerDates" AS table_to_update
+    SET "coreRetailerId"=updated_records."coreRetailerId"
+    FROM updated_records
+    WHERE table_to_update.id = updated_records.id;
+
+    /*  coreRetailerTaxonomies */
+    WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
+                             FROM UNNEST(log."updated_coreRetailerTaxonomies") AS t)
+    UPDATE "coreRetailerTaxonomies" AS table_to_update
+    SET "coreRetailerId"=updated_records."coreRetailerId"
+    FROM updated_records
+    WHERE table_to_update.id = updated_records.id;
+
+    /*  bannersProducts */
+    WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
+                             FROM UNNEST(log."updated_bannersProducts") AS t)
+    UPDATE "bannersProducts" AS table_to_update
+    SET "coreRetailerId"=updated_records."coreRetailerId"
+    FROM updated_records
+    WHERE table_to_update.id = updated_records.id;
+
+    /*  coreRetailerSources */
+    WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
+                             FROM UNNEST(log."updated_coreRetailerSources") AS t)
+    UPDATE "coreRetailerSources" AS table_to_update
+    SET "coreRetailerId"=updated_records."coreRetailerId"
+    FROM updated_records
+    WHERE table_to_update.id = updated_records.id;
 
 
     /*  remove log entry. Maybe archive it?  */

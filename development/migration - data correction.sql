@@ -78,11 +78,12 @@ We will need to aggregate all the records with multiple occurrences of coreProdu
 The additional table, "coreRetailerSources", will have field coreRetailerId to link to the table coreRetailers, and a unique constraint for the (retailerId, sourceId), i.e., a single sourceId (within a retailer)
     will always point only to only one coreRetailer (retailer, coreProduct).
 
-Tables with an FK to "coreRetailers" ("coreRetailerId"):
+Tables with an FK to "coreRetailers" ("coreRetailerId") (currently on coreRetailerDates and bannersProducts have an FK, but should be added for the rest) :
     - "reviews"
     - "coreRetailerDates"
     - "coreRetailerTaxonomies"
     - "bannersProducts"
+  - **additional table, coreRetailerSources for linking all the sourceIds to a coreRetailer record (retailerId, coreProductId)
 
     1. Add UQ constraint ("retailerId", "coreProductId") in "coreRetailers":
     2. move "sourceId"(s) to a new table "coreRetailerSources".
