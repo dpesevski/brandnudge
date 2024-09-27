@@ -1,3 +1,5 @@
+-- set WORK_MEM = '8GB'
+-- show WORK_MEM
 /*
 "coreProducts"
 +---------------------------+-------------------------------------------------------------------------------------------+
@@ -182,6 +184,25 @@ FROM "bannersProducts"
          INNER JOIN records_to_update USING ("coreRetailerId");
  */
 
+
+ALTER TABLE "coreRetailerDates"
+    ALTER CONSTRAINT "coreRetailerDates_coreRetailerId_fkey" DEFERRABLE;
+ALTER TABLE "bannersProducts"
+    ALTER CONSTRAINT "bannersProducts_coreRetailerId_fkey" DEFERRABLE;
+ALTER TABLE "coreRetailerDates"
+    ALTER CONSTRAINT "coreRetailerDates_dateId_fkey" DEFERRABLE;
+
+/*
+ALTER TABLE reviews
+    ADD CONSTRAINT uq_coreretailerid_reviewid UNIQUE USING INDEX coreretailerid_reviewid_uniq DEFERRABLE;
+ALTER TABLE "coreRetailerTaxonomies"
+    ADD CONSTRAINT uq_coreretailertaxonomies_coreretailerid_retailertaxonomyid UNIQUE USING INDEX coreretailertaxonomies_coreretailerid_retailertaxonomyid_uq DEFERRABLE;
+*/
+
+
+SET CONSTRAINTS ALL DEFERRED;
+
+
 --DROP INDEX coreretailerid_reviewid_uniq;
 DROP TABLE IF EXISTS "reviews_corrections";
 
@@ -201,6 +222,7 @@ FROM reviews
 WHERE reviews."coreRetailerId" = "reviews_corrections"."coreRetailerId"
   AND reviews."reviewId" = reviews_corrections."reviewId"
   AND is_a_copy;
+
 
 /*
     Should update only the remaining records in
@@ -307,17 +329,24 @@ FROM deleted;
 
             As another possible solution, only use the latest occurence of sourceId in coreRetailers to fill in the coreReatilerSources.
             This will be the solution for now.
-   */
 SELECT *
 FROM staging."duplicates_coreRetailerSources"
          INNER JOIN "coreRetailers" ON ("coreRetailers".id = "coreRetailerId")
 ORDER BY "duplicates_coreRetailerSources"."retailerId", "duplicates_coreRetailerSources"."sourceId";
+   */
 
 ALTER TABLE "coreRetailerSources"
     ADD CONSTRAINT coreRetailerSources_pk
         UNIQUE ("retailerId", "sourceId");
 
+/*  times out  */
+/*
+ALTER TABLE "coreRetailerDates"
+    DROP CONSTRAINT "coreRetailerDates_coreRetailerId_fkey";
+ALTER TABLE "bannersProducts"
+    DROP CONSTRAINT "bannersProducts_coreRetailerId_fkey";
 
+*/
 CREATE TABLE "coreRetailers_corrections" AS
 WITH corrections AS (
     DELETE
@@ -327,6 +356,24 @@ WITH corrections AS (
             RETURNING destination_table.*)
 SELECT *
 FROM corrections;
+/*
+ALTER TABLE "coreRetailerDates"
+    ADD FOREIGN KEY ("coreRetailerId") REFERENCES "coreRetailers";
+
+ALTER TABLE "bannersProducts"
+    ADD FOREIGN KEY ("coreRetailerId") REFERENCES "coreRetailers";
+*/
+
+/*
+NO FK
+coreRetailerTaxonomies
+reviews
+
+EXISTING FK
+coreRetailerDates
+bannersProducts
+
+*/
 
 
 
@@ -343,7 +390,9 @@ ALTER TABLE "coreRetailers"
 ALTER TABLE "coreRetailers"
     ADD CONSTRAINT coreRetailers_pk
         UNIQUE ("coreProductId", "retailerId");
-
+ALTER TABLE "coreRetailers"
+    ADD CONSTRAINT coreRetailers_pk2
+        UNIQUE ("id", "retailerId");
 
 ALTER TABLE "coreRetailerSources"
     ADD CONSTRAINT coreRetailerSources_coreRetailers_id_retailerId_fk

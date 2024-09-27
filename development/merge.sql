@@ -507,12 +507,15 @@ BEGIN
 
     /*  update dependant tables to coreRetailers    */
 
-    - ""
-    - ""
-    - ""
-
-
     /*  reviews */
+    WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
+                             FROM UNNEST(log."updated_reviews") AS t)
+    UPDATE "reviews" AS table_to_update
+    SET "coreRetailerId"=updated_records."coreRetailerId"
+    FROM updated_records
+    WHERE table_to_update.id = updated_records.id;
+
+    /*  coreRetailerDates */
     WITH updated_records AS (SELECT LOWER(t) id, UPPER(t) AS "coreRetailerId"
                              FROM UNNEST(log."updated_coreRetailerDates") AS t)
     UPDATE "coreRetailerDates" AS table_to_update
