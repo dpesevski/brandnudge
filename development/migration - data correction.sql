@@ -203,9 +203,7 @@ ALTER TABLE "coreRetailerTaxonomies"
 SET CONSTRAINTS ALL DEFERRED;
 
 
---DROP INDEX coreretailerid_reviewid_uniq;
 DROP TABLE IF EXISTS "reviews_corrections";
-
 CREATE TABLE "reviews_corrections" AS
 WITH copy_of_review AS (SELECT "coreRetailerId" AS "new_coreRetailerId", "reviewId" FROM reviews)
 SELECT *, copy_of_review."reviewId" IS NOT NULL AS is_a_copy

@@ -63,7 +63,7 @@ WITH index_def AS (SELECT tnsp.nspname                AS table_schema,
                          WHERE constraint_schema = 'public')
 SELECT table_name, constraint_name, definition
 FROM all_constraints
-WHERE LOWER(definition) LIKE LOWER('%coreRetailerId%')
+WHERE LOWER(definition) LIKE LOWER('%coreRetailer%')
 ORDER BY table_name;
 
 WITH fk AS (SELECT cl1.relname::text AS table_name, cl2.relname::text AS ref_table, co.conname
