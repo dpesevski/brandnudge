@@ -548,7 +548,7 @@ BEGIN
     INTO "reviews"
     SELECT *
     FROM deleted_records
-    ON CONFLICT DO UPDATE
+    ON CONFLICT (id) DO UPDATE
         SET "coreRetailerId"=excluded."coreRetailerId";
 
 
@@ -567,7 +567,7 @@ BEGIN
     INTO "coreRetailerTaxonomies"
     SELECT *
     FROM deleted_records
-    ON CONFLICT DO UPDATE
+    ON CONFLICT (id) DO UPDATE
         SET "coreRetailerId"=excluded."coreRetailerId";
 
     /*  bannersProducts */
