@@ -464,3 +464,16 @@ FROM "coreRetailerDates";
 */
 
 
+alter table records_to_update RENAME to "data_corr_records_to_update";
+alter table "coreRetailers_corrections" RENAME to "data_corr_affected_coreRetailers";
+alter table "reviews_corrections" RENAME to "data_corr_affected_reviews";
+alter table "coreRetailerDates_corrections" RENAME to "data_corr_affected_coreRetailerDates";
+alter table "coreRetailerTaxonomies_corrections" RENAME to "data_corr_affected_coreRetailerTaxonomies";
+alter table "bannersProducts_corrections" RENAME to "data_corr_affected_bannersProducts";
+
+alter table "data_corr_records_to_update" SET SCHEMA staging;
+alter table "data_corr_affected_coreRetailers" SET SCHEMA staging;
+alter table "data_corr_affected_reviews" SET SCHEMA staging;
+alter table "data_corr_affected_coreRetailerDates" SET SCHEMA staging;
+alter table "data_corr_affected_coreRetailerTaxonomies" SET SCHEMA staging;
+alter table "data_corr_affected_bannersProducts" SET SCHEMA staging;
