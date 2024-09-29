@@ -185,13 +185,6 @@ FROM "bannersProducts"
  */
 
 
-ALTER TABLE "coreRetailerDates"
-    ALTER CONSTRAINT "coreRetailerDates_coreRetailerId_fkey" DEFERRABLE;
-ALTER TABLE "bannersProducts"
-    ALTER CONSTRAINT "bannersProducts_coreRetailerId_fkey" DEFERRABLE;
-ALTER TABLE "coreRetailerDates"
-    ALTER CONSTRAINT "coreRetailerDates_dateId_fkey" DEFERRABLE;
-
 /*
 ALTER TABLE reviews
     ADD CONSTRAINT uq_coreretailerid_reviewid UNIQUE USING INDEX coreretailerid_reviewid_uniq DEFERRABLE;
@@ -199,12 +192,22 @@ ALTER TABLE "coreRetailerTaxonomies"
     ADD CONSTRAINT uq_coreretailertaxonomies_coreretailerid_retailertaxonomyid UNIQUE USING INDEX coreretailertaxonomies_coreretailerid_retailertaxonomyid_uq DEFERRABLE;
 */
 
+/*
+ALTER TABLE "coreRetailerDates"
+    ALTER CONSTRAINT "coreRetailerDates_coreRetailerId_fkey" DEFERRABLE;
+ALTER TABLE "bannersProducts"
+    ALTER CONSTRAINT "bannersProducts_coreRetailerId_fkey" DEFERRABLE;
+ALTER TABLE "coreRetailerDates"
+    ALTER CONSTRAINT "coreRetailerDates_dateId_fkey" DEFERRABLE;
 
 SET CONSTRAINTS ALL DEFERRED;
+*/
+
+
 /*
- all reviews 20032196
+ 20032196 all reviews
  640,024 rows deleted
-620,298 rows inserted
+ 620,298 rows inserted
  */
 DROP TABLE IF EXISTS "reviews_corrections";
 CREATE TABLE "reviews_corrections" AS
@@ -240,44 +243,31 @@ ON CONFLICT ("coreRetailerId","reviewId")
     DO NOTHING;
 
 
-DROP TABLE IF EXISTS "reviews_corrections";
-CREATE TABLE "reviews_corrections" AS
-WITH copy_of_review AS (SELECT "coreRetailerId" AS "new_coreRetailerId", "reviewId" FROM reviews)
-SELECT *, copy_of_review."reviewId" IS NOT NULL AS is_a_copy
-FROM reviews
-         INNER JOIN records_to_update USING ("coreRetailerId")
-         LEFT OUTER JOIN copy_of_review
-                         USING ("new_coreRetailerId", "reviewId");
 
--- review records to delete as they have same reviewId/comments and the rest of the fields.
--- These are a copy of the review record we'll keep.
-DELETE
-FROM reviews
-    USING reviews_corrections
-WHERE reviews."coreRetailerId" = "reviews_corrections"."coreRetailerId"
-  AND reviews."reviewId" = reviews_corrections."reviewId"
-  AND is_a_copy;
-
-
-/*
-    Should update only the remaining records in
-*/
-UPDATE reviews
-SET "coreRetailerId" = "new_coreRetailerId"
-FROM reviews_corrections
-WHERE reviews."coreRetailerId" = reviews_corrections."coreRetailerId"
-  AND reviews."reviewId" = reviews_corrections."reviewId"
-  AND NOT is_a_copy;
-
+DROP TABLE IF EXISTS "coreRetailerTaxonomies_corrections";
 CREATE TABLE "coreRetailerTaxonomies_corrections" AS
+WITH deleted AS (
+    DELETE
+        FROM "coreRetailerTaxonomies"
+            USING records_to_update
+            WHERE "coreRetailerTaxonomies"."coreRetailerId" = records_to_update."coreRetailerId"
+            RETURNING "coreRetailerTaxonomies".*, "new_coreRetailerId")
 SELECT *
-FROM "coreRetailerTaxonomies"
-         INNER JOIN records_to_update USING ("coreRetailerId");
+FROM deleted;
 
-UPDATE "coreRetailerTaxonomies" AS destination_table
-SET "coreRetailerId" = "new_coreRetailerId"
-FROM records_to_update
-WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId";
+INSERT INTO "coreRetailerTaxonomies" (id,
+                                      "coreRetailerId",
+                                      "retailerTaxonomyId",
+                                      "createdAt",
+                                      "updatedAt")
+SELECT id,
+       "new_coreRetailerId",
+       "retailerTaxonomyId",
+       "createdAt",
+       "updatedAt"
+FROM "coreRetailerTaxonomies_corrections"
+ON CONFLICT DO NOTHING;
+
 
 /*  2nd step for "coreRetailerTaxonomies"
     Previous update may produce multiple records with same "retailerTaxonomyId" for a given "coreRetailerId".
@@ -296,21 +286,21 @@ WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId";
 
 CREATE TABLE "bannersProducts_corrections" AS
 WITH corrections AS (
-    UPDATE "bannersProducts" AS destination_table
+    UPDATE "bannersProducts"
         SET "coreRetailerId" = "new_coreRetailerId"
         FROM records_to_update
-        WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId"
-        RETURNING destination_table.*)
+        WHERE records_to_update."coreRetailerId" = "bannersProducts"."coreRetailerId"
+        RETURNING "bannersProducts".*)
 SELECT *
 FROM corrections;
 
 CREATE TABLE "coreRetailerDates_corrections" AS
 WITH corrections AS (
     DELETE
-        FROM "coreRetailerDates" AS destination_table
+        FROM "coreRetailerDates"
             USING records_to_update
-            WHERE records_to_update."coreRetailerId" = destination_table."coreRetailerId"
-            RETURNING destination_table.*)
+            WHERE records_to_update."coreRetailerId" = "coreRetailerDates"."coreRetailerId"
+            RETURNING "coreRetailerDates".*)
 SELECT *
 FROM corrections;
 
@@ -375,29 +365,30 @@ ALTER TABLE "coreRetailerSources"
         UNIQUE ("retailerId", "sourceId");
 
 /*  times out  */
-/*
+
 ALTER TABLE "coreRetailerDates"
     DROP CONSTRAINT "coreRetailerDates_coreRetailerId_fkey";
 ALTER TABLE "bannersProducts"
     DROP CONSTRAINT "bannersProducts_coreRetailerId_fkey";
 
-*/
 CREATE TABLE "coreRetailers_corrections" AS
 WITH corrections AS (
     DELETE
-        FROM "coreRetailers" AS destination_table
+        FROM "coreRetailers"
             USING records_to_update
-            WHERE records_to_update."coreRetailerId" = destination_table.id
-            RETURNING destination_table.*)
+            WHERE records_to_update."coreRetailerId" = "coreRetailers".id
+            RETURNING "coreRetailers".*)
 SELECT *
 FROM corrections;
-/*
-ALTER TABLE "coreRetailerDates"
-    ADD FOREIGN KEY ("coreRetailerId") REFERENCES "coreRetailers";
+
+ALTER TABLE public."coreRetailerDates"
+    ADD FOREIGN KEY ("coreRetailerId") REFERENCES public."coreRetailers"
+        ON DELETE CASCADE
+        DEFERRABLE;
 
 ALTER TABLE "bannersProducts"
-    ADD FOREIGN KEY ("coreRetailerId") REFERENCES "coreRetailers";
-*/
+    ADD FOREIGN KEY ("coreRetailerId") REFERENCES "coreRetailers" DEFERRABLE;
+
 
 /*
 NO FK
@@ -409,8 +400,6 @@ coreRetailerDates
 bannersProducts
 
 */
-
-
 
 ALTER TABLE "coreRetailers"
     DROP CONSTRAINT core_retailers_unique;
