@@ -558,7 +558,8 @@ BEGIN
     INSERT
     INTO "coreRetailerDates"
     SELECT *
-    FROM deleted_records;
+    FROM deleted_records
+    ON CONFLICT (id) DO NOTHING;
 
     /*  coreRetailerTaxonomies */
     WITH deleted_records AS (SELECT t.*

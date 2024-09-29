@@ -477,3 +477,23 @@ alter table "data_corr_affected_reviews" SET SCHEMA staging;
 alter table "data_corr_affected_coreRetailerDates" SET SCHEMA staging;
 alter table "data_corr_affected_coreRetailerTaxonomies" SET SCHEMA staging;
 alter table "data_corr_affected_bannersProducts" SET SCHEMA staging;
+
+/*
+    The script corrects the data structures:
+        - "coreRetailers"
+            - sets UQ constraints for "coreRetailers" on ("coreProductId", "retailerId") and ("id", "retailerId").
+                The last one is added for referential constraint on coreRetailerSources, to ensure these are for same retailer.
+            - drop attributer "productId". "productId" are migrated to "coreRetailerSources".
+        - "coreRetailerSources"
+            - UQ "sourceId" and
+            - FK on "coreRetailers" ("coreRetailerId", "retailerId").
+
+    The latest updated version of "coreRetailers" for each ("retailerId", "coreProductId") is kept.
+    The rest of the records/versions are:
+        - removed, and kept and a backup is created in staging."data_corr_affected_coreRetailers"
+        - records in the related tables are updated/deleted with the coreRetailerId from the version we kept. The affected records backups in
+             - staging."data_corr_affected_reviews"
+             - staging."data_corr_affected_coreRetailerDates"
+             - staging."data_corr_affected_coreRetailerTaxonomies"
+             - staging."data_corr_affected_bannersProducts"
+*/
