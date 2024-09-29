@@ -201,6 +201,43 @@ ALTER TABLE "coreRetailerTaxonomies"
 
 
 SET CONSTRAINTS ALL DEFERRED;
+/*
+ all reviews 20032196
+ 640,024 rows deleted
+620,298 rows inserted
+ */
+DROP TABLE IF EXISTS "reviews_corrections";
+CREATE TABLE "reviews_corrections" AS
+WITH deleted AS (
+    DELETE
+        FROM reviews
+            USING records_to_update
+            WHERE reviews."coreRetailerId" = records_to_update."coreRetailerId"
+            RETURNING reviews.*, "new_coreRetailerId")
+SELECT *
+FROM deleted;
+
+INSERT INTO reviews (id,
+                     "coreRetailerId",
+                     "reviewId",
+                     title,
+                     comment,
+                     rating,
+                     date,
+                     "createdAt",
+                     "updatedAt")
+SELECT id,
+       "new_coreRetailerId",
+       "reviewId",
+       title,
+       comment,
+       rating,
+       date,
+       "createdAt",
+       "updatedAt"
+FROM reviews_corrections
+ON CONFLICT ("coreRetailerId","reviewId")
+    DO NOTHING;
 
 
 DROP TABLE IF EXISTS "reviews_corrections";
