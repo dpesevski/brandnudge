@@ -1,5 +1,3 @@
--- set WORK_MEM = '8GB'
--- show WORK_MEM
 /*
 "coreProducts"
 +---------------------------+-------------------------------------------------------------------------------------------+
@@ -53,19 +51,12 @@ NOT to be considered in the updates.
 |coreProductTaggings        | An empty table. New feature?
 +---------------------------+-------------------------------------------------------------------------------------------+
 
-A) Fix failed merges
-=============================
-
-Table "mappingLogs" logs attempts to merge one coreProduct record to another coreProduct. It includes also the affected product records.
-We should check if these merges were applied in full, i.e., find if the affected records in the above tables were updated to point to the new coreProductId.
-If we find some of these records were not updated by the earlier merges, we should correct this, and apply the merge in full.
-
-B)  coreProducts which have same titles and similar EANs
-
-
 */
 
 /*
+A) Fix "coreRetailers" structure and adjust the data
+=============================
+
 "coreRetailers"
 ===============================================================================
 "coreRetailers" table is used both for:
@@ -103,13 +94,23 @@ NOTES:  If "sourceId" pointed to ane "coreProduct" and later to another, see if 
     Look for the latest coreProduct a specific product was to be merged into (can have more than one merges), and apply this one as a coreRetailerId.
 */
 
+
+B) Fix failed merges
+=============================
+
+Table "mappingLogs" logs attempts to merge one coreProduct record to another coreProduct. It includes also the affected product records.
+We should check if these merges were applied in full, i.e., find if the affected records in the above tables were updated to point to the new coreProductId.
+If we find some of these records were not updated by the earlier merges, we should correct this, and apply the merge in full.
+
+C)  coreProducts which have same titles and similar EANs
+
 ===============================================================================
 
 
  */
 
+-- set WORK_MEM = '1GB'
 
---CREATE TEMPORARY TABLE records_to_update ON COMMIT DROP AS
 DROP TABLE IF EXISTS records_to_update;
 CREATE TABLE records_to_update AS
 WITH retailers_selection2("retailerId") AS (VALUES (3), -- sainsburys
@@ -151,41 +152,6 @@ WHERE NOT is_most_recent_record;
 
 
 /*
-SELECT COUNT(*)
-FROM records_to_update;
-
-SELECT COUNT(*)
-FROM "coreRetailers";
-*/
-/*
-WITH upd_reviews AS (SELECT "retailerId", "coreProductId", "new_coreRetailerId", reviews.*
-                     FROM reviews
-                              INNER JOIN records_to_update USING ("coreRetailerId")
-                     UNION ALL
-                     SELECT DISTINCT "retailerId",
-                                     "coreProductId",
-                                     reviews."coreRetailerId" AS "new_coreRetailerId",
-                                     reviews.*
-                     FROM reviews
-                              INNER JOIN records_to_update
-                                         ON (reviews."coreRetailerId" = records_to_update."new_coreRetailerId")),
-     selection AS (SELECT "new_coreRetailerId", "reviewId"
-                   FROM upd_reviews
-                   GROUP BY "new_coreRetailerId", "reviewId"
-                   HAVING COUNT(*) > 1)
-SELECT *
-FROM upd_reviews
-         INNER JOIN selection USING ("new_coreRetailerId", "reviewId")
-ORDER BY "new_coreRetailerId", "reviewId";
-*/
-/*
-SELECT COUNT(*)
-FROM "bannersProducts"
-         INNER JOIN records_to_update USING ("coreRetailerId");
- */
-
-
-/*
 ALTER TABLE reviews
     ADD CONSTRAINT uq_coreretailerid_reviewid UNIQUE USING INDEX coreretailerid_reviewid_uniq DEFERRABLE;
 ALTER TABLE "coreRetailerTaxonomies"
@@ -203,12 +169,7 @@ ALTER TABLE "coreRetailerDates"
 SET CONSTRAINTS ALL DEFERRED;
 */
 
-
-/*
- 20032196 all reviews
- 640,024 rows deleted
- 620,298 rows inserted
- */
+/*  reviews */
 DROP TABLE IF EXISTS "reviews_corrections";
 CREATE TABLE "reviews_corrections" AS
 WITH deleted AS (
@@ -243,7 +204,7 @@ ON CONFLICT ("coreRetailerId","reviewId")
     DO NOTHING;
 
 
-
+/*  coreRetailerTaxonomies  */
 DROP TABLE IF EXISTS "coreRetailerTaxonomies_corrections";
 CREATE TABLE "coreRetailerTaxonomies_corrections" AS
 WITH deleted AS (
@@ -268,11 +229,11 @@ SELECT id,
 FROM "coreRetailerTaxonomies_corrections"
 ON CONFLICT DO NOTHING;
 
+/*  COMMENT ON "coreRetailerTaxonomies"
 
-/*  2nd step for "coreRetailerTaxonomies"
-    Previous update may produce multiple records with same "retailerTaxonomyId" for a given "coreRetailerId".
-    These should be removed.
-    However, within the existing data there are a number of cases where a single core product for a given retailer (coreRetailerId) is flagged with same retailerTaxonomyId in multiple records.
+    Updates in coreRetailers may produce multiple records with same "retailerTaxonomyId" for a given "coreRetailerId".
+    The above statements delete these records.
+    However, outside of these updates, within the existing data there are a number of cases where a single core product for a given retailer (coreRetailerId) is flagged with same retailerTaxonomyId in multiple records.
 
     SELECT id,
            "coreRetailerId",
@@ -329,43 +290,16 @@ SELECT "coreRetailerId", "retailerId", "sourceId"
 FROM selection
 WHERE version_no = 1;
 
-/*
--- no longer relevant as only the latest occurrence of sourceId in coreRetailers is considered.
-
-DROP TABLE IF EXISTS staging."duplicates_coreRetailerSources";
-CREATE TABLE staging."duplicates_coreRetailerSources" AS
-WITH duplicates AS (SELECT "retailerId", "sourceId"
-                    FROM "coreRetailerSources"
-                    GROUP BY "retailerId", "sourceId"
-                    HAVING COUNT(*) > 1),
-     deleted AS (
-
-         DELETE
-             FROM "coreRetailerSources" USING duplicates
-                 WHERE "coreRetailerSources"."retailerId" = duplicates."retailerId"
-                     AND "coreRetailerSources"."sourceId" = duplicates."sourceId"
-                 RETURNING "coreRetailerSources".*)
-SELECT *
-FROM deleted;
-*/
-
-/* TO DO:   Handle cases where a single sourceId links to multiple coreProducts in coreRetailers
-            As a possible solution, include these earlier in the records_to_update, so all coreRetailers records are handled (deleted) at once.
-
-            As another possible solution, only use the latest occurence of sourceId in coreRetailers to fill in the coreReatilerSources.
-            This will be the solution for now.
-SELECT *
-FROM staging."duplicates_coreRetailerSources"
-         INNER JOIN "coreRetailers" ON ("coreRetailers".id = "coreRetailerId")
-ORDER BY "duplicates_coreRetailerSources"."retailerId", "duplicates_coreRetailerSources"."sourceId";
-   */
-
 ALTER TABLE "coreRetailerSources"
     ADD CONSTRAINT coreRetailerSources_pk
         UNIQUE ("retailerId", "sourceId");
 
-/*  times out  */
+/*  coreRetailerDates_coreRetailerId_fkey constraint includes the clause to cascade the updates from "coreRetailers"
+    The referential constraints ore temporary disabled, during this transaction, to speed the update.
+    Later, the same are restored.
 
+    As an alternative, we could deffer the checks for the end of the transaction, but then will need to execute the changes in the coreRetailers structure in another transaction.
+*/
 ALTER TABLE "coreRetailerDates"
     DROP CONSTRAINT "coreRetailerDates_coreRetailerId_fkey";
 ALTER TABLE "bannersProducts"
@@ -423,47 +357,6 @@ ALTER TABLE "coreRetailerSources"
         FOREIGN KEY ("coreRetailerId", "retailerId") REFERENCES "coreRetailers" (id, "retailerId");
 
 
-/*
-SELECT *
-FROM information_schema.columns
-WHERE column_name = 'coreRetailerId'
-  AND table_schema = 'public';
-
-SELECT id,
-       "coreRetailerId",
-       "reviewId",
-       title,
-       comment,
-       rating,
-       date,
-       "createdAt",
-       "updatedAt"
-FROM reviews;
-
-SELECT id,
-       "coreRetailerId",
-       "retailerTaxonomyId",
-       "createdAt",
-       "updatedAt"
-FROM "coreRetailerTaxonomies";
-
-SELECT id,
-       "productId",
-       "bannerId",
-       "createdAt",
-       "updatedAt",
-       "coreRetailerId"
-FROM "bannersProducts";
-
-SELECT id,
-       "coreRetailerId",
-       "dateId",
-       "createdAt",
-       "updatedAt"
-FROM "coreRetailerDates";
-*/
-
-
 alter table records_to_update RENAME to "data_corr_records_to_update";
 alter table "coreRetailers_corrections" RENAME to "data_corr_affected_coreRetailers";
 alter table "reviews_corrections" RENAME to "data_corr_affected_reviews";
@@ -479,21 +372,22 @@ alter table "data_corr_affected_coreRetailerTaxonomies" SET SCHEMA staging;
 alter table "data_corr_affected_bannersProducts" SET SCHEMA staging;
 
 /*
-    The script corrects the data structures:
+    The script makes the following changes in the data structure:
         - "coreRetailers"
             - sets UQ constraints for "coreRetailers" on ("coreProductId", "retailerId") and ("id", "retailerId").
                 The last one is added for referential constraint on coreRetailerSources, to ensure these are for same retailer.
-            - drop attributer "productId". "productId" are migrated to "coreRetailerSources".
-        - "coreRetailerSources"
+            - drop attribute "productId". "productId" are migrated to "coreRetailerSources".
+        - "coreRetailerSources", new table for keeping retailer's "sourceId"s
             - UQ "sourceId" and
             - FK on "coreRetailers" ("coreRetailerId", "retailerId").
 
-    The latest updated version of "coreRetailers" for each ("retailerId", "coreProductId") is kept.
-    The rest of the records/versions are:
-        - removed, and kept and a backup is created in staging."data_corr_affected_coreRetailers"
-        - records in the related tables are updated/deleted with the coreRetailerId from the version we kept. The affected records backups in
-             - staging."data_corr_affected_reviews"
-             - staging."data_corr_affected_coreRetailerDates"
-             - staging."data_corr_affected_coreRetailerTaxonomies"
-             - staging."data_corr_affected_bannersProducts"
+    The script makes the following updates in the data to adjust it to the new structures:
+    - keep the latest version of "coreRetailers" for each ("retailerId", "coreProductId"). The rest of the records/versions are removed.
+        A backup is created in staging."data_corr_affected_coreRetailers"
+    - records in the related tables are deleted or updated with the "coreRetailerId" from the version we kept.
+        The affected records are backup in
+         - staging."data_corr_affected_reviews"
+         - staging."data_corr_affected_coreRetailerDates"
+         - staging."data_corr_affected_coreRetailerTaxonomies"
+         - staging."data_corr_affected_bannersProducts"
 */
