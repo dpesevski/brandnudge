@@ -1,64 +1,9 @@
 /*
-"coreProducts"
-+---------------------------+-------------------------------------------------------------------------------------------+
-|table_name                 | Comments                                                                                  |
-+---------------------------+-------------------------------------------------------------------------------------------+
-|products                   |
-|taxonomyProducts           | no UQ constraint, but should be enforced to avoid duplicates after a merge.
-|productGroupCoreProducts   | no NOT NULL constraint. no UQ constraint, but should be enforced to avoid duplicates after a merge.
-                                            product groups are not used with coreProducts for the past 4 years
-                                                SELECT *
-                                                FROM "coreProducts"
-                                                WHERE "productGroupId" IS NOT NULL
-                                                ORDER BY "createdAt" DESC;
-
-|coreProductBarcodes        | there is no NOT NULL constraint on coreProductId, and no FK to coreProducts. However, the data is ok, and these constraints can be added immediately,
-|coreProductSourceCategories| FK to coreProducts exists, only add NOT NULL constraint. UQ constraint exist on ("sourceCategoryId", "coreProductId"). When merging, if a record with a ("sourceCategoryId", new "coreProductId") exists, the record being merged should be deleted.
-|coreProductCountryData     | FK to coreProducts exists as well, add NOT NULL constraint. UQ constraint exist on ("coreProductId", "countryId"). When merging, if a record with a ("countryId", new "coreProductId") exists, the record being merged should be deleted.
-
-
-
-|coreRetailers              | there is no NOT NULL constraint on coreProductId and no FK to coreProducts. One record relates to non-existing coreProductId(36693). Other then this constraints can be added immediately,
-                                  There is UQ on ("coreProductId", "retailerId", "productId"). However, this table should split in 2
-                                    - one, keeping the name but with UQ ("coreProductId", "retailerId"), and
-                                    - additional one,  a copy of the original, with UQ on ("coreProductId", "retailerId", "productId").
-                                  Most of the tables relating to coreRetailers are relating on the coreProduct, not the sourceId(productId).
-
-TO DO:  1) Handle tables relating to "coreRetailers"
-            - "reviews"
-            - "coreRetailerDates"
-            - "coreRetailerTaxonomies"
-            - "bannersProducts"
-            - **additional table, coreRetailerSources for linking all the sourceIds to a coreRetailer record (retailerId, coreProductId)
-
-        These tables will not be updated in case coreRetailers is updated to link to a new coreProductId.
-        They will only get updated in case the coreRetailer record is deleted (so we won't end up with duplicate coreProductId in coreRetailers for a single retailerId).
-        It is most probable that this will be the only case, as the new coreProductId should already be present in the coreRetailers table.
-
-        If the coreRetailers record gets deleted, the related records in the above tables will be updated to point to the new coreRetailerId (coreProduct).
-        We will store the ids of these records, in a separate array within the deleted_coreRetailer record, so we can reverse it later if needed.
-
-        The coreRetailer table will have a unique constraint for (retailerId, coreProductId).
-        The additional table, coreRetailerSources, will have a unique constraint for the (retailerId, sourceId), i.e., a single sourceId (within a retailer)
-            will always point only to only one coreRetailer (retailer, coreProduct).
-
-
-
-NOT to be considered in the updates.
-=============================
-|mappingSuggestions         | This table has less records than mappingLogs (when counting distinct coreProductId,suggestedProductId)
-|coreProductsOverride       | A small table, only 3 records. Looks like coreRetailers.
-|coreProductTaggings        | An empty table. New feature?
-+---------------------------+-------------------------------------------------------------------------------------------+
-
-*/
-
-/*
-A) Fix "coreRetailers" structure and adjust the data
-=============================
-
-"coreRetailers"
+Fix "coreRetailers" structure and adjust the data
 ===============================================================================
+
+Background
+========================
 "coreRetailers" table is used both for:
     - linking products (coreProduct) to other source like reviews, coreRetailerTaxonomies, and
     - ingestion, to find the coreProduct by product's "sourceId", ("coreRetailers"."productId")
@@ -71,10 +16,10 @@ We will need to aggregate all the records with multiple occurrences of coreProdu
 The additional table, "coreRetailerSources", will have field coreRetailerId to link to the table coreRetailers, and a unique constraint for the (retailerId, sourceId), i.e., a single sourceId (within a retailer)
     will always point only to only one coreRetailer (retailer, coreProduct).
 
-Tables with an FK to "coreRetailers" ("coreRetailerId") (currently on coreRetailerDates and bannersProducts have an FK, but should be added for the rest) :
+Tables referencing "coreRetailers" ("coreRetailerId"):  (**reviews and coreRetailerTaxonomies do not have an FK defined in the schema. should be added)
     - "reviews"
-    - "coreRetailerDates"
     - "coreRetailerTaxonomies"
+    - "coreRetailerDates"
     - "bannersProducts"
   - **additional table, coreRetailerSources for linking all the sourceIds to a coreRetailer record (retailerId, coreProductId)
 
@@ -84,28 +29,26 @@ Tables with an FK to "coreRetailers" ("coreRetailerId") (currently on coreRetail
         If a "sourceId" pointed to more than one "coreProductid", only the latest coreProductId will be kept as active. The previous versions can be archived.
     3.  update above tables "coreRetailerId" with a new "new_coreRetailerId".
          "new_coreRetailerId" is the record which remained in coreRetailers for a ("retailerId", "coreProductId") after applying the UQ constraint.
-        3.1. update records in the 4 tables, but prevent from creating duplicates after the update, i.e., delete a record if there is already a record with the "new_coreRetailerId".
-
-NOTES:  If "sourceId" pointed to ane "coreProduct" and later to another, see if the two coreProducts merged ("mappingLogs"). This will be handled later in case C).
-        Otherwise, the reviews (and the other tables), which were created before the change, should point to the old coreProduct, and after to the new coreProduct.
-
- /*
-    update "coreRetailersId" ("coreProductid") in Reviews (and other 3 tables?) for coreProducts which were to be merged with another coreProduct ("mappingLogs").
-    Look for the latest coreProduct a specific product was to be merged into (can have more than one merges), and apply this one as a coreRetailerId.
-*/
+        3.1. update records in the 5 tables, but prevent from creating duplicates after the update, i.e., delete a record if there is already a record with the "new_coreRetailerId".
 
 
-B) Fix failed merges
-=============================
+Implementation
+========================
+The script makes the following changes in the data structure:
+ - adds a new table "coreRetailerSources", for keeping retailer's "sourceId"s separately, with a
+    - UQ constraint on "sourceId", and
+    - referential constraint on "coreRetailers" ("coreRetailerId", "retailerId"). The "retailerId" is added to enforce records from the two tables relate to same retailerId.
+- "coreRetailers"
+    - adds UQ constraints for on ("coreProductId", "retailerId") and ("id", "retailerId"). The last one is added for the referential constraint on coreRetailerSources.
+    - drop attribute "productId" as "productId" are migrated to "coreRetailerSources".
 
-Table "mappingLogs" logs attempts to merge one coreProduct record to another coreProduct. It includes also the affected product records.
-We should check if these merges were applied in full, i.e., find if the affected records in the above tables were updated to point to the new coreProductId.
-If we find some of these records were not updated by the earlier merges, we should correct this, and apply the merge in full.
+The script makes the following updates in the data to adjust it to the new structures:
+ - keeps the latest version of "coreRetailers" records for each ("retailerId", "coreProductId"). The rest of the records/versions are removed.
+ - records in the related tables which pointed to the coreRetailerIds which will be removed are handled in the following way:
+    - "reviews", "coreRetailerTaxonomies" and "coreRetailerDates" have a UQ constraint on coreRetailerId with reviewId /retailerTaxonomyId/dateId. The script will try to update the related record to point to the new "coreRetailerId", however, in case are record already exists relating to the new coreRetailerId with same reviewId/retailerTaxonomyId/dateId, the record will not be updated and will be deleted.
+    - "bannersProducts" does not have UQ constraints, so these records are only updated. Maybe we should review this at another run of fixes.
 
-C)  coreProducts which have same titles and similar EANs
-
-===============================================================================
-
+The affected records are backup in staging in "data_corr_affected_*" tables.
 
  */
 
@@ -245,6 +188,25 @@ ON CONFLICT DO NOTHING;
     ORDER BY "coreRetailerId", "retailerTaxonomyId";
 */
 
+CREATE TABLE "coreRetailerDates_corrections" AS
+WITH corrections AS (
+    DELETE
+        FROM "coreRetailerDates"
+            USING records_to_update
+            WHERE records_to_update."coreRetailerId" = "coreRetailerDates"."coreRetailerId"
+            RETURNING "coreRetailerDates".*, "new_coreRetailerId")
+SELECT *
+FROM corrections;
+
+INSERT INTO "coreRetailerDates" (id, "coreRetailerId", "dateId", "createdAt", "updatedAt")
+SELECT id,
+       "new_coreRetailerId",
+       "dateId",
+       "createdAt",
+       "updatedAt"
+FROM "coreRetailerDates_corrections"
+ON CONFLICT DO NOTHING;
+
 CREATE TABLE "bannersProducts_corrections" AS
 WITH corrections AS (
     UPDATE "bannersProducts"
@@ -252,16 +214,6 @@ WITH corrections AS (
         FROM records_to_update
         WHERE records_to_update."coreRetailerId" = "bannersProducts"."coreRetailerId"
         RETURNING "bannersProducts".*)
-SELECT *
-FROM corrections;
-
-CREATE TABLE "coreRetailerDates_corrections" AS
-WITH corrections AS (
-    DELETE
-        FROM "coreRetailerDates"
-            USING records_to_update
-            WHERE records_to_update."coreRetailerId" = "coreRetailerDates"."coreRetailerId"
-            RETURNING "coreRetailerDates".*)
 SELECT *
 FROM corrections;
 
@@ -357,37 +309,28 @@ ALTER TABLE "coreRetailerSources"
         FOREIGN KEY ("coreRetailerId", "retailerId") REFERENCES "coreRetailers" (id, "retailerId");
 
 
-alter table records_to_update RENAME to "data_corr_records_to_update";
-alter table "coreRetailers_corrections" RENAME to "data_corr_affected_coreRetailers";
-alter table "reviews_corrections" RENAME to "data_corr_affected_reviews";
-alter table "coreRetailerDates_corrections" RENAME to "data_corr_affected_coreRetailerDates";
-alter table "coreRetailerTaxonomies_corrections" RENAME to "data_corr_affected_coreRetailerTaxonomies";
-alter table "bannersProducts_corrections" RENAME to "data_corr_affected_bannersProducts";
+ALTER TABLE records_to_update
+    RENAME TO "data_corr_records_to_update";
+ALTER TABLE "coreRetailers_corrections"
+    RENAME TO "data_corr_affected_coreRetailers";
+ALTER TABLE "reviews_corrections"
+    RENAME TO "data_corr_affected_reviews";
+ALTER TABLE "coreRetailerDates_corrections"
+    RENAME TO "data_corr_affected_coreRetailerDates";
+ALTER TABLE "coreRetailerTaxonomies_corrections"
+    RENAME TO "data_corr_affected_coreRetailerTaxonomies";
+ALTER TABLE "bannersProducts_corrections"
+    RENAME TO "data_corr_affected_bannersProducts";
 
-alter table "data_corr_records_to_update" SET SCHEMA staging;
-alter table "data_corr_affected_coreRetailers" SET SCHEMA staging;
-alter table "data_corr_affected_reviews" SET SCHEMA staging;
-alter table "data_corr_affected_coreRetailerDates" SET SCHEMA staging;
-alter table "data_corr_affected_coreRetailerTaxonomies" SET SCHEMA staging;
-alter table "data_corr_affected_bannersProducts" SET SCHEMA staging;
-
-/*
-    The script makes the following changes in the data structure:
-        - "coreRetailers"
-            - sets UQ constraints for "coreRetailers" on ("coreProductId", "retailerId") and ("id", "retailerId").
-                The last one is added for referential constraint on coreRetailerSources, to ensure these are for same retailer.
-            - drop attribute "productId". "productId" are migrated to "coreRetailerSources".
-        - "coreRetailerSources", new table for keeping retailer's "sourceId"s
-            - UQ "sourceId" and
-            - FK on "coreRetailers" ("coreRetailerId", "retailerId").
-
-    The script makes the following updates in the data to adjust it to the new structures:
-    - keep the latest version of "coreRetailers" for each ("retailerId", "coreProductId"). The rest of the records/versions are removed.
-        A backup is created in staging."data_corr_affected_coreRetailers"
-    - records in the related tables are deleted or updated with the "coreRetailerId" from the version we kept.
-        The affected records are backup in
-         - staging."data_corr_affected_reviews"
-         - staging."data_corr_affected_coreRetailerDates"
-         - staging."data_corr_affected_coreRetailerTaxonomies"
-         - staging."data_corr_affected_bannersProducts"
-*/
+ALTER TABLE "data_corr_records_to_update"
+    SET SCHEMA staging;
+ALTER TABLE "data_corr_affected_coreRetailers"
+    SET SCHEMA staging;
+ALTER TABLE "data_corr_affected_reviews"
+    SET SCHEMA staging;
+ALTER TABLE "data_corr_affected_coreRetailerDates"
+    SET SCHEMA staging;
+ALTER TABLE "data_corr_affected_coreRetailerTaxonomies"
+    SET SCHEMA staging;
+ALTER TABLE "data_corr_affected_bannersProducts"
+    SET SCHEMA staging;
