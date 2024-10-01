@@ -50,6 +50,15 @@ The script makes the following updates in the data to adjust it to the new struc
 
 The affected records are backup in staging in "data_corr_affected_*" tables.
 
+coreRetailers	                        926,948
+coreRetailerSources	                    899,725
+
+updates_part1_from_sourceId	            27,223 	`
+updates_part2_from_coreProductId	    16,464
+part2  & part1	    (1,198)
+=====================================================
+                                total:  43,687
+
  */
 
 -- set WORK_MEM = '1GB'
