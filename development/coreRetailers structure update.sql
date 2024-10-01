@@ -54,44 +54,100 @@ The affected records are backup in staging in "data_corr_affected_*" tables.
 
 -- set WORK_MEM = '1GB'
 
+DROP TABLE IF EXISTS public."coreRetailerSources";
+CREATE TABLE public."coreRetailerSources"
+(
+    id               serial PRIMARY KEY,
+    "coreRetailerId" integer,
+    "retailerId"     integer,
+    "sourceId"       varchar(255),
+    "createdAt"      timestamptz DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"      timestamptz DEFAULT CURRENT_TIMESTAMP
+);
+
+-- missing coreProductId (id=36693) for coreRetailers(id=36137)
+WITH disabled_core_products AS (SELECT id AS "coreProductId", disabled
+                                FROM "coreProducts"),
+     "coreRetailerSources_base" AS (SELECT "coreRetailers".id                                                                              AS "coreRetailerId",
+                                           "coreRetailers"."retailerId",
+                                           "coreRetailers"."productId"                                                                     AS "sourceId",
+                                           ROW_NUMBER() OVER (PARTITION BY "coreRetailers"."retailerId",
+                                               "coreRetailers"."productId" ORDER BY disabled NULLS LAST, "coreRetailers"."updatedAt" DESC) AS version_no
+                                    FROM "coreRetailers"
+                                             LEFT OUTER JOIN disabled_core_products USING ("coreProductId"))
+INSERT
+INTO "coreRetailerSources" ("coreRetailerId", "retailerId", "sourceId")
+SELECT "coreRetailerId", "retailerId", "sourceId"
+FROM "coreRetailerSources_base"
+WHERE version_no = 1;
+
+ALTER TABLE "coreRetailerSources"
+    ADD CONSTRAINT coreRetailerSources_pk
+        UNIQUE ("retailerId", "sourceId");
+
+
 DROP TABLE IF EXISTS records_to_update;
+/*  updates part1 from sourceId */
 CREATE TABLE records_to_update AS
-WITH retailers_selection2("retailerId") AS (VALUES (3), -- sainsburys
-                                                   (8), -- ocado
-                                                   (10) -- waitrose
-),
-     retailers_selection("retailerId") AS (SELECT id AS "retailerId"
-                                           FROM retailers),
-     ret_prod_selection AS (SELECT "retailerId",
-                                   "coreProductId",
-                                   ARRAY_AGG("productId" ORDER BY "createdAt" DESC) AS "productIds"
-                            FROM "coreRetailers"
-                                     INNER JOIN retailers_selection USING ("retailerId")
-                            GROUP BY "retailerId", "coreProductId"
-                            HAVING COUNT(*) > 1),
+SELECT to_keep."retailerId",
+       --to_keep."sourceId",
+       to_update."coreProductId",
+       to_update.id             AS "coreRetailerId",
+       to_keep."coreRetailerId" AS "new_coreRetailerId"
+FROM "coreRetailers" AS to_update
+         INNER JOIN "coreRetailerSources" AS to_keep
+                    ON (to_update."retailerId" = to_keep."retailerId"
+                        AND to_update."productId" = to_keep."sourceId"
+                        AND to_update.id != to_keep."coreRetailerId");
 
-     "coreRetailers_base" AS (SELECT id                            AS "coreRetailerId",
-                                     "coreProductId",
-                                     "retailerId",
-                                     "productId",
-                                     "createdAt",
-                                     "updatedAt",
-                                     "productIds",
-                                     "productId" = "productIds"[1] AS is_most_recent_record
-                              FROM "coreRetailers"
-                                       INNER JOIN ret_prod_selection USING ("retailerId", "coreProductId")
-                              ORDER BY "retailerId", "coreProductId", "createdAt" DESC),
 
-     records_to_keep AS (SELECT "retailerId",
-                                "coreProductId",
-                                "coreRetailerId" AS "new_coreRetailerId"
-                         FROM "coreRetailers_base"
-                         WHERE is_most_recent_record)
-SELECT "coreRetailerId", "new_coreRetailerId", "coreProductId", "retailerId"
-FROM "coreRetailers_base"
-         INNER JOIN records_to_keep USING ("retailerId", "coreProductId")
-WHERE NOT is_most_recent_record;
+/*  updates part2 from coreProductId */
+DROP TABLE IF EXISTS "updates_part2_from_coreProductId";
+CREATE TABLE "updates_part2_from_coreProductId" AS
+WITH "coreRetailerIds_within_coreRetailerSources" AS (SELECT "coreRetailerSources"."coreRetailerId" AS id
+                                                      FROM "coreRetailerSources"),
+     "kept_coreRetailers_after_updates_part1" AS (SELECT id                                             AS "coreRetailerId",
+                                                         "retailerId",
+                                                         "coreProductId",
+                                                         ROW_NUMBER() OVER (PARTITION BY "retailerId",
+                                                             "coreProductId" ORDER BY "updatedAt" DESC) AS version_no
+                                                  FROM "coreRetailers"
+                                                           INNER JOIN "coreRetailerIds_within_coreRetailerSources" USING (id)),
+     to_keep AS (SELECT *
+                 FROM "kept_coreRetailers_after_updates_part1"
+                 WHERE version_no = 1),
+     to_update AS (SELECT *
+                   FROM "kept_coreRetailers_after_updates_part1"
+                   WHERE version_no > 1)
+SELECT "retailerId",
+       "coreProductId",
+       to_update."coreRetailerId",
+       to_keep."coreRetailerId" AS "new_coreRetailerId"
+FROM to_update
+         INNER JOIN to_keep USING ("retailerId", "coreProductId");
 
+
+/*  update "coreRetailerSources" records which link to same coreProductId in coreRetailers */
+UPDATE "coreRetailerSources"
+SET "coreRetailerId"="updates_part2_from_coreProductId"."new_coreRetailerId"
+FROM "updates_part2_from_coreProductId"
+WHERE "coreRetailerSources"."coreRetailerId" = "updates_part2_from_coreProductId"."coreRetailerId";
+
+
+/*  determine final new_coreRetailerId after updates from sourceId and then from coreProductId */
+UPDATE records_to_update
+SET "new_coreRetailerId"="updates_part2_from_coreProductId"."new_coreRetailerId"
+FROM "updates_part2_from_coreProductId"
+WHERE records_to_update."new_coreRetailerId" = "updates_part2_from_coreProductId"."coreRetailerId";
+
+ALTER TABLE records_to_update
+    ADD CONSTRAINT records_to_update_uq UNIQUE ("retailerId", "coreRetailerId");
+
+INSERT INTO records_to_update ("retailerId", "coreProductId", "coreRetailerId", "new_coreRetailerId")
+SELECT "retailerId", "coreProductId", "coreRetailerId", "new_coreRetailerId"
+FROM "updates_part2_from_coreProductId";
+
+DROP TABLE "updates_part2_from_coreProductId";
 
 
 /*
@@ -217,34 +273,6 @@ WITH corrections AS (
 SELECT *
 FROM corrections;
 
-
-DROP TABLE IF EXISTS public."coreRetailerSources";
-CREATE TABLE public."coreRetailerSources"
-(
-    id               serial PRIMARY KEY,
-    "coreRetailerId" integer,
-    "retailerId"     integer,
-    "sourceId"       varchar(255),
-    "createdAt"      timestamptz DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt"      timestamptz DEFAULT CURRENT_TIMESTAMP
-);
-WITH selection AS (SELECT COALESCE(records_to_update."new_coreRetailerId", "coreRetailers".id)       AS "coreRetailerId",
-                          "coreRetailers"."retailerId",
-                          "coreRetailers"."productId"                                                AS "sourceId",
-                          ROW_NUMBER() OVER (PARTITION BY "coreRetailers"."retailerId",
-                              "coreRetailers"."productId" ORDER BY "coreRetailers"."updatedAt" DESC) AS version_no
-                   FROM "coreRetailers"
-                            LEFT OUTER JOIN records_to_update
-                                            ON (records_to_update."coreRetailerId" = "coreRetailers".id))
-INSERT
-INTO "coreRetailerSources" ("coreRetailerId", "retailerId", "sourceId")
-SELECT "coreRetailerId", "retailerId", "sourceId"
-FROM selection
-WHERE version_no = 1;
-
-ALTER TABLE "coreRetailerSources"
-    ADD CONSTRAINT coreRetailerSources_pk
-        UNIQUE ("retailerId", "sourceId");
 
 /*  coreRetailerDates_coreRetailerId_fkey constraint includes the clause to cascade the updates from "coreRetailers"
     The referential constraints ore temporary disabled, during this transaction, to speed the update.
