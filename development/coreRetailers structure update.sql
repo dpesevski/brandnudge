@@ -54,6 +54,23 @@ The affected records are backup in staging in "data_corr_affected_*" tables.
 
 -- set WORK_MEM = '1GB'
 
+/*
+Refactoring the creation of "coreRetailerSources" and selecting coreRetailers records which we'll handle later ("records_to_update")
+===========================================================================================================================================
+1) we first  create "coreRetailersSources", to have all the different sourceIds from coreRetailrs.
+    - the coreRetailerId here will point to the latest record in coreRetailers relating to a non-disabled coreProduct. If all coreRetailers records point to disabled coreProducts, then the latest of them is selected.
+    - every other record in coreRetailers is subject to be replaced with the one in coreRetailerSources matching its sourceId (productId). Technically, if we remove the rest of the records in coreRetailers, only one record per sourceId will remain, and coreRetailers records will match 1-1 with the ones in coreRetailersSources.
+    - we use the selected records in coreRetailers (as stored now in "coreRetailersSources") and put these in the records_to_update table.
+2) the next part of the updates is focusing on the remaining records in coreRetailers with same coreProductId
+    - the latest versions are kept, and the rest are put in the records_to_update, as a 2nd selection of records to update
+    - as there are records in coreRetailers which will be part of both updates, first from the sourceIds and later from the coreProductids, the two selections are merged into one, using a temporary table "updates_part2_from_coreProductId".
+    - the "updates_part2_from_coreProductId" is
+        - first used to update the "coreRetailersSources", and then the initial records in records_to_update to point to the final new coreRetailerId, and finaly
+        - its records are pushed into records_to_update as a second batch of coreRetailers records to updte
+
+The end result in records_to_update is thus all the coreRetailers records which will need to be handled later in the script. First we use these to update the related tables (reviews, coreRetailerTaxonomies...) to link to the new coreRetailerId, and at the end to remove the records in coreRetailers.
+
+*/
 DROP TABLE IF EXISTS public."coreRetailerSources";
 CREATE TABLE public."coreRetailerSources"
 (
