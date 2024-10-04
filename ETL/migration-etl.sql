@@ -781,7 +781,12 @@ BEGIN
     ),*/
         prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
         prod_barcode AS (SELECT barcode, "coreProductId" FROM "coreProductBarcodes"),
-        prod_core AS (SELECT ean, id FROM "coreProducts"),
+        prod_core AS (SELECT ean, id AS "coreProductId" FROM "coreProducts"),
+        prod_retailersource AS (SELECT "sourceId", "coreProductId"
+                                FROM "coreRetailerSources"
+                                         INNER JOIN "coreRetailers"
+                                                    ON ("coreRetailerSources"."coreRetailerId" = "coreRetailers".id)),
+
         tmp_daily_data_pp AS (SELECT product.date,
                                      product."countryCode",
                                      product."currency",
@@ -892,7 +897,9 @@ BEGIN
            NULL::float                                                         AS "reviewsStars",
            NULL                                                                AS "eposId",
            COALESCE(trsf_promo.is_multibuy, FALSE)                             AS multibuy,
-           COALESCE(prod_barcode."coreProductId", prod_core.id)                AS "coreProductId",
+           COALESCE(prod_barcode."coreProductId",
+                    prod_core."coreProductId",
+                    prod_retailersource."coreProductId")                       AS "coreProductId",
            dd_retailer.id                                                      AS "retailerId",
            NOW()                                                               AS "createdAt",
            NOW()                                                               AS "updatedAt",
@@ -998,7 +1005,9 @@ BEGIN
         --   LEFT OUTER JOIN prod_brand ON (ARRAY ["productBrand"] && brand_names);
              LEFT OUTER JOIN prod_brand USING ("productBrand")
              LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = checkEAN.ean)
-             LEFT OUTER JOIN prod_core ON (prod_core.ean = checkEAN.ean);
+             LEFT OUTER JOIN prod_core ON (prod_core.ean = checkEAN.ean)
+             LEFT OUTER JOIN prod_retailersource
+                             ON (prod_retailersource."sourceId" = dd_products."sourceId");
 
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
@@ -1445,23 +1454,20 @@ BEGIN
     WITH ins_coreRetailers AS (
         INSERT INTO "coreRetailers" ("coreProductId",
                                      "retailerId",
-                                     "productId",
                                      "createdAt",
                                      "updatedAt")
             SELECT product."coreProductId",
                    dd_retailer.id,
-                   product."sourceId" AS "productId",
-                   NOW()      AS "createdAt",
-                   NOW()      AS "updatedAt"
+                   NOW()              AS "createdAt",
+                   NOW()              AS "updatedAt"
             FROM tmp_product_pp AS product
             ON CONFLICT ("coreProductId",
-                "retailerId",
-                "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
-            RETURNING "coreRetailers".*)
+                "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
+            RETURNING "coreRetailers".*, product."sourceId")
     SELECT id,
            "coreProductId",
            "retailerId",
-           "productId",
+           "sourceId",
            "createdAt",
            "updatedAt"
     FROM ins_coreRetailers;
@@ -1470,6 +1476,15 @@ BEGIN
     INTO staging.debug_coreRetailers
     SELECT debug_test_run_id, *
     FROM tmp_coreRetailer;
+
+
+
+    /*  coreRetailerSources */
+    INSERT INTO "coreRetailerSources"("coreRetailerId", "retailerId", "sourceId", "createdAt", "updatedAt")
+    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt"
+    FROM tmp_coreRetailer
+    ON CONFLICT DO NOTHING;
+
 
     /*  saveProductStatus   */
     WITH debug_productStatuses AS ( INSERT INTO "productStatuses" ("productId",
@@ -1761,10 +1776,16 @@ BEGIN
                         WHERE type = dd_sourceCategoryType),
          prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
          prod_barcode AS (SELECT barcode, "coreProductId" FROM "coreProductBarcodes"),
-         prod_core AS (SELECT ean, id FROM "coreProducts"),
+         prod_core AS (SELECT ean, id AS "coreProductId" FROM "coreProducts"),
+         prod_retailersource AS (SELECT "sourceId", "coreProductId"
+                                 FROM "coreRetailerSources"
+                                          INNER JOIN "coreRetailers"
+                                                     ON ("coreRetailerSources"."coreRetailerId" = "coreRetailers".id)),
 
          daily_data AS (SELECT NULL::integer                                                                 AS id,
-                               COALESCE(prod_barcode."coreProductId", prod_core.id)                          AS "coreProductId",
+                               COALESCE(prod_barcode."coreProductId",
+                                        prod_core."coreProductId",
+                                        prod_retailersource."coreProductId")                                 AS "coreProductId",
                                NULL::integer                                                                 AS "parentCategory", -- TO DO
 
                                promotions,
@@ -1844,6 +1865,8 @@ TO DO
                                  LEFT OUTER JOIN prod_brand USING ("productBrand")
                                  LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = tmp_daily_data.ean)
                                  LEFT OUTER JOIN prod_core ON (prod_core.ean = tmp_daily_data.ean)
+                                 LEFT OUTER JOIN prod_retailersource
+                                                 ON (prod_retailersource."sourceId" = tmp_daily_data."sourceId")
                             /*  CompareUtil.checkEAN    */
                             -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
                                  CROSS JOIN LATERAL ( SELECT tmp_daily_data.ean !~
@@ -1853,7 +1876,7 @@ TO DO
                             ARRAY_AGG(
                                     (NULL,
                                      NULL,
-                                     CATEGORY,
+                                     category,
                                      "categoryType",
                                      "parentCategory",
                                      "productRank",
@@ -2419,23 +2442,20 @@ TO DO
     WITH ins_coreRetailers AS (
         INSERT INTO "coreRetailers" ("coreProductId",
                                      "retailerId",
-                                     "productId",
                                      "createdAt",
                                      "updatedAt")
             SELECT product."coreProductId",
                    dd_retailer.id,
-                   product."sourceId" AS "productId",
-                   NOW()      AS "createdAt",
-                   NOW()      AS "updatedAt"
+                   NOW() AS "createdAt",
+                   NOW() AS "updatedAt"
             FROM tmp_product AS product
             ON CONFLICT ("coreProductId",
-                "retailerId",
-                "productId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
-            RETURNING "coreRetailers".*)
+                "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
+            RETURNING "coreRetailers".*, product."sourceId")
     SELECT id,
            "coreProductId",
            "retailerId",
-           "productId",
+           "sourceId",
            "createdAt",
            "updatedAt"
     FROM ins_coreRetailers;
@@ -2444,6 +2464,13 @@ TO DO
     INTO staging.debug_coreRetailers
     SELECT debug_test_run_id, *
     FROM tmp_coreRetailer;
+
+
+    /*  coreRetailerSources */
+    INSERT INTO "coreRetailerSources"("coreRetailerId", "retailerId", "sourceId", "createdAt", "updatedAt")
+    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt"
+    FROM tmp_coreRetailer
+    ON CONFLICT DO NOTHING;
 
     /*  setCoreRetailerTaxonomy */
     /*  nodejs code interpreted as insert in coreRetailerTaxonomies only if the given taxonomyId already exists in retailerTaxonomies */
