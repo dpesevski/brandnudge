@@ -321,6 +321,74 @@ WITH corrections AS (
 SELECT *
 FROM corrections;
 
+
+/*
++---------+--------------+------+
+|id       |coreRetailerId|dateId|
++---------+--------------+------+
+|264872436|769669        |28948 |
+|264874622|984897        |28948 |
+|264872349|642268        |28948 |
+|264873228|3428369       |28948 |
+|264873265|3428408       |28948 |
+|264876342|986023        |28948 |
+|264873343|986942        |28948 |
++---------+--------------+------+
+
+
+WITH corrections AS (
+    DELETE
+        FROM "coreRetailerDates"
+            USING records_to_update
+            WHERE records_to_update."coreRetailerId" = "coreRetailerDates"."coreRetailerId" AND
+                  records_to_update."coreRetailerId" IN (769669,
+                                                         984897,
+                                                         642268,
+                                                         3428369,
+                                                         3428408,
+                                                         986023,
+                                                         986942
+                      )
+            RETURNING "coreRetailerDates".*, "new_coreRetailerId")
+INSERT
+INTO "coreRetailerDates_corrections"
+SELECT *
+FROM corrections;
+
+INSERT INTO "coreRetailerDates" (id, "coreRetailerId", "dateId", "createdAt", "updatedAt")
+SELECT id,
+       "new_coreRetailerId",
+       "dateId",
+       "createdAt",
+       "updatedAt"
+FROM "coreRetailerDates_corrections"
+WHERE "coreRetailerId" IN (769669,
+                           984897,
+                           642268,
+                           3428369,
+                           3428408,
+                           986023,
+                           986942
+    )
+ON CONFLICT DO NOTHING;
+
+
+
+SELECT "coreRetailerDates".*
+FROM "coreRetailerDates"
+         INNER JOIN records_to_update USING ("coreRetailerId")
+WHERE "coreRetailerId" IN (769669,
+                           984897,
+                           642268,
+                           3428369,
+                           3428408,
+                           986023,
+                           986942
+    );
+
+ */
+
+
 ALTER TABLE public."coreRetailerDates"
     ADD FOREIGN KEY ("coreRetailerId") REFERENCES public."coreRetailers"
         ON DELETE CASCADE
@@ -354,6 +422,32 @@ ALTER TABLE "coreRetailers"
 ALTER TABLE "coreRetailers"
     ADD CONSTRAINT coreRetailers_pk
         UNIQUE ("coreProductId", "retailerId");
+/*
+
+WITH "coreRetailers_v_no" AS (SELECT *,
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "coreProductId", "retailerId" ORDER BY "updatedAt" DESC) AS version_no
+                              FROM "coreRetailers")
+SELECT *
+FROM "coreRetailers_v_no"
+WHERE version_no = 2;
++--------+-------------+----------+---------------------------------+---------------------------------+----------+
+|id      |coreProductId|retailerId|createdAt                        |updatedAt                        |version_no|
++--------+-------------+----------+---------------------------------+---------------------------------+----------+
+|10219943|1334227      |1071      |2024-10-04 09:26:36.970330 +00:00|2024-10-04 09:26:36.970330 +00:00|2         |
++--------+-------------+----------+---------------------------------+---------------------------------+----------+
+
+
+select * from "coreRetailerSources" where "coreRetailerId"=10219943;
+select * from "reviews" where "coreRetailerId"=10219943;
+select * from "coreRetailerDates" where "coreRetailerId"=10219943;
+select * from "coreRetailerTaxonomies" where "coreRetailerId"=10219943;
+select * from "bannersProducts" where "coreRetailerId"=10219943;
+
+delete from "coreRetailerDates" where "coreRetailerId"=10219943;
+delete from "coreRetailers" where id=10219943;
+*/
+
 ALTER TABLE "coreRetailers"
     ADD CONSTRAINT coreRetailers_pk2
         UNIQUE ("id", "retailerId");
