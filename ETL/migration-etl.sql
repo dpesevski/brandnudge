@@ -785,7 +785,10 @@ BEGIN
         prod_retailersource AS (SELECT "sourceId", "coreProductId"
                                 FROM "coreRetailerSources"
                                          INNER JOIN "coreRetailers"
-                                                    ON ("coreRetailerSources"."coreRetailerId" = "coreRetailers".id)),
+                                                    ON (
+                                                        "coreRetailers"."retailerId" = dd_retailer.id AND
+                                                        "coreRetailerSources"."coreRetailerId" = "coreRetailers".id
+                                                        )),
 
         tmp_daily_data_pp AS (SELECT product.date,
                                      product."countryCode",
@@ -1456,27 +1459,27 @@ BEGIN
                                      "retailerId",
                                      "createdAt",
                                      "updatedAt")
-            SELECT product."coreProductId",
-                   dd_retailer.id,
-                   NOW()              AS "createdAt",
-                   NOW()              AS "updatedAt"
+            SELECT DISTINCT product."coreProductId",
+                            dd_retailer.id,
+                            NOW() AS "createdAt",
+                            NOW() AS "updatedAt"
             FROM tmp_product_pp AS product
             ON CONFLICT ("coreProductId",
                 "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
-            RETURNING "coreRetailers".*, product."sourceId")
-    SELECT id,
-           "coreProductId",
-           "retailerId",
-           "sourceId",
-           "createdAt",
-           "updatedAt"
-    FROM ins_coreRetailers;
+            RETURNING "coreRetailers".*)
+    SELECT DISTINCT ins_coreRetailers.id,
+                    "coreProductId",
+                    ins_coreRetailers."retailerId",
+                    product."sourceId",
+                    ins_coreRetailers."createdAt",
+                    ins_coreRetailers."updatedAt"
+    FROM ins_coreRetailers
+             INNER JOIN tmp_product_pp AS product USING ("coreProductId");
 
     INSERT
     INTO staging.debug_coreRetailers
     SELECT debug_test_run_id, *
     FROM tmp_coreRetailer;
-
 
 
     /*  coreRetailerSources */
@@ -1780,7 +1783,8 @@ BEGIN
          prod_retailersource AS (SELECT "sourceId", "coreProductId"
                                  FROM "coreRetailerSources"
                                           INNER JOIN "coreRetailers"
-                                                     ON ("coreRetailerSources"."coreRetailerId" = "coreRetailers".id)),
+                                                     ON ("coreRetailers"."retailerId" = dd_retailer.id AND
+                                                         "coreRetailerSources"."coreRetailerId" = "coreRetailers".id)),
 
          daily_data AS (SELECT NULL::integer                                                                 AS id,
                                COALESCE(prod_barcode."coreProductId",
@@ -2444,21 +2448,22 @@ TO DO
                                      "retailerId",
                                      "createdAt",
                                      "updatedAt")
-            SELECT product."coreProductId",
-                   dd_retailer.id,
-                   NOW() AS "createdAt",
-                   NOW() AS "updatedAt"
+            SELECT DISTINCT product."coreProductId",
+                            dd_retailer.id,
+                            NOW() AS "createdAt",
+                            NOW() AS "updatedAt"
             FROM tmp_product AS product
             ON CONFLICT ("coreProductId",
                 "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
-            RETURNING "coreRetailers".*, product."sourceId")
-    SELECT id,
-           "coreProductId",
-           "retailerId",
-           "sourceId",
-           "createdAt",
-           "updatedAt"
-    FROM ins_coreRetailers;
+            RETURNING "coreRetailers".*)
+    SELECT DISTINCT ins_coreRetailers.id,
+                    "coreProductId",
+                    ins_coreRetailers."retailerId",
+                    product."sourceId",
+                    ins_coreRetailers."createdAt",
+                    ins_coreRetailers."updatedAt"
+    FROM ins_coreRetailers
+             INNER JOIN tmp_product AS product USING ("coreProductId");
 
     INSERT
     INTO staging.debug_coreRetailers

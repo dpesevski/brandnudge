@@ -61,7 +61,8 @@ part2  & part1	    (1,198)
 
  */
 
--- set WORK_MEM = '1GB'
+SET WORK_MEM = '2GB';
+CREATE SCHEMA IF NOT EXISTS staging;
 
 /*
 Refactoring the creation of "coreRetailerSources" and selecting coreRetailers records which we'll handle later ("records_to_update")
