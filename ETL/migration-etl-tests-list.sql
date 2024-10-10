@@ -196,43 +196,61 @@ GROUP BY "coreProducts".id, "coreProducts"."createdAt";
 
 /*
 
+DROP TABLE IF EXISTS test.retailer;
+CREATE TABLE test.retailer
+(
+    "retailerId" integer,
+    flag         text,
+    is_pp        boolean
+);
+
+
+INSERT INTO test.retailer ("retailerId", flag, is_pp)
+VALUES  (807, 'create-products-pp', true), --coles
+        (972, 'create-products-pp', true); --woolworths;
+
 SELECT *
 FROM dates
-WHERE id >= 28297
+WHERE id >= 28330
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id >=28297
+WHERE id >=28330
 ORDER BY "createdAt" DESC NULLS LAST;
+
 */
+
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
-SELECT *, NULL::json AS promo_data
+SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >= 28297
+                     WHERE id >= 28330
     --WHERE date >= '2024-07-10'
 ) AS dates
-                    USING ("dateId");
+                    USING ("dateId")
+         INNER JOIN test.retailer USING ("retailerId");
 
 DROP TABLE IF EXISTS test.tstg_products;
 CREATE TABLE IF NOT EXISTS test.tstg_products AS
-SELECT *, NULL::json AS promo_data
+SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >= 28297
+                     WHERE id >= 28330
     --WHERE date >= '2024-07-10'
 ) AS dates
-                    USING ("dateId");
+                    USING ("dateId")
+         INNER JOIN test.retailer USING ("retailerId");
 
 CREATE INDEX IF NOT EXISTS tprd_products_retailerId_date_sourceId_index
     ON test.tprd_products ("retailerId", dates_date, "sourceId");
 
 CREATE INDEX IF NOT EXISTS tstg_products_retailerId_date_sourceId_index
     ON test.tstg_products ("retailerId", dates_date, "sourceId");
+
 /*
 WITH promo AS (SELECT promotions."productId",
                       JSON_AGG(promo ORDER BY promo.description) AS promo_data
@@ -316,6 +334,7 @@ SELECT "retailerId",
 FROM prod_cnt
          FULL OUTER JOIN test.retailer USING ("retailerId")
 ORDER BY "retailerId";
+
 
 /*  T02:  missing products in prod    */
 SELECT *

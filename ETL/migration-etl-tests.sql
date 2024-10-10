@@ -96,6 +96,7 @@ FROM staging.debug_test_run
 GROUP BY 1
 ORDER BY 1 DESC;
 
+
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY test_run_id, "retailerId", "sourceType")
@@ -110,7 +111,7 @@ SELECT id           AS test_run_id,
        execution_time,
        dd_date
 FROM staging.debug_test_run
-         INNER JOIN prod_cnt USING (id)
+         LEFT OUTER JOIN prod_cnt USING (id)
 ORDER BY id DESC;
 
 WITH debug_errors AS (SELECT debug_errors.id AS error_id,
@@ -171,9 +172,11 @@ WHERE "retailerId" = 1337
 
 SELECT staging.load_retailer_data(fetched_data, 'create-products-pp')
 FROM staging.debug_errors
-WHERE id >8;
+WHERE id > 8;
 
-delete from staging.debug_errors where id>=15;
+DELETE
+FROM staging.debug_errors
+WHERE id >= 15;
 
 SELECT *
 FROM staging.debug_errors
@@ -182,4 +185,10 @@ WHERE id = 7;
 
 SELECT *
 FROM staging.debug_test_run
-WHERE id in (1300,1298)
+WHERE id IN (1300, 1298)
+
+
+SELECT *
+FROM pg_stat_activity
+WHERE datname = 'brandnudge-dev'
+  AND state != 'idle'
