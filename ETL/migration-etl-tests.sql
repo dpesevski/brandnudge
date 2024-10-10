@@ -83,7 +83,7 @@ SELECT debug_test_run_id,
 FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
  */
-
+SET WORK_MEM = '2GB';
 WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY test_run_id, "retailerId", "sourceType")
@@ -171,7 +171,9 @@ WHERE "retailerId" = 1337
 
 SELECT staging.load_retailer_data(fetched_data, 'create-products-pp')
 FROM staging.debug_errors
-WHERE id = 7;
+WHERE id >8;
+
+delete from staging.debug_errors where id>=15;
 
 SELECT *
 FROM staging.debug_errors

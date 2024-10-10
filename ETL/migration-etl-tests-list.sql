@@ -193,13 +193,26 @@ FROM "coreProducts"
 GROUP BY "coreProducts".id, "coreProducts"."createdAt";
 */
 
+
+/*
+
+SELECT *
+FROM dates
+WHERE id >= 28297
+ORDER BY "createdAt" DESC NULLS LAST;
+
+SELECT *
+FROM prod_fdw.dates
+WHERE id >=28297
+ORDER BY "createdAt" DESC NULLS LAST;
+*/
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT *, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id > 27670
+                     WHERE id >= 28297
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");
@@ -210,7 +223,7 @@ SELECT *, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id > 27670
+                     WHERE id >= 28297
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId");

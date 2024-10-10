@@ -600,6 +600,7 @@ DROP TABLE IF EXISTS staging.debug_coreretailers;
 CREATE TABLE staging.debug_coreretailers
 (
     test_run_id integer,
+    "sourceId"  text,
     LIKE "coreRetailers"
 );
 DROP TABLE IF EXISTS staging.debug_coreretailertaxonomies;
@@ -1009,8 +1010,7 @@ BEGIN
              LEFT OUTER JOIN prod_brand USING ("productBrand")
              LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = checkEAN.ean)
              LEFT OUTER JOIN prod_core ON (prod_core.ean = checkEAN.ean)
-             LEFT OUTER JOIN prod_retailersource
-                             ON (prod_retailersource."sourceId" = dd_products."sourceId");
+             LEFT OUTER JOIN prod_retailersource using ("sourceId");
 
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
@@ -1477,8 +1477,8 @@ BEGIN
              INNER JOIN tmp_product_pp AS product USING ("coreProductId");
 
     INSERT
-    INTO staging.debug_coreRetailers
-    SELECT debug_test_run_id, *
+    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt")
+    SELECT debug_test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
 
@@ -1869,8 +1869,7 @@ TO DO
                                  LEFT OUTER JOIN prod_brand USING ("productBrand")
                                  LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = tmp_daily_data.ean)
                                  LEFT OUTER JOIN prod_core ON (prod_core.ean = tmp_daily_data.ean)
-                                 LEFT OUTER JOIN prod_retailersource
-                                                 ON (prod_retailersource."sourceId" = tmp_daily_data."sourceId")
+                                 LEFT OUTER JOIN prod_retailersource using ("sourceId")
                             /*  CompareUtil.checkEAN    */
                             -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
                                  CROSS JOIN LATERAL ( SELECT tmp_daily_data.ean !~
@@ -2466,8 +2465,8 @@ TO DO
              INNER JOIN tmp_product AS product USING ("coreProductId");
 
     INSERT
-    INTO staging.debug_coreRetailers
-    SELECT debug_test_run_id, *
+    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt")
+    SELECT debug_test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
 
@@ -2488,11 +2487,11 @@ TO DO
                NOW(),
                NOW()
         FROM tmp_coreRetailer
-                 INNER JOIN (SELECT DISTINCT tmp_product."sourceId" AS "productId",
+                 INNER JOIN (SELECT DISTINCT tmp_product."sourceId",
                                              ranking."taxonomyId"
                              FROM tmp_product
                                       CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking) AS product
-                            USING ("productId")
+                            USING ("sourceId")
                  INNER JOIN (SELECT id AS "taxonomyId" FROM "retailerTaxonomies") AS ret_tax USING ("taxonomyId")
         ON CONFLICT ("coreRetailerId",
             "retailerTaxonomyId")
