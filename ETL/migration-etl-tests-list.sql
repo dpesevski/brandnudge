@@ -195,6 +195,17 @@ GROUP BY "coreProducts".id, "coreProducts"."createdAt";
 
 
 /*
+CREATE EXTENSION IF NOT EXISTS ltree;
+
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+CREATE SERVER proddb_fdw FOREIGN DATA WRAPPER postgres_fdw OPTIONS (host 'brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com', port '5432', dbname 'brandnudge');
+CREATE USER MAPPING FOR postgres SERVER proddb_fdw OPTIONS (user 'dejan_user', password 'nCIqhxXgwItIGtK');
+
+DROP SCHEMA IF EXISTS prod_fdw CASCADE;
+CREATE SCHEMA prod_fdw;
+IMPORT FOREIGN SCHEMA public FROM SERVER proddb_fdw INTO prod_fdw;
+
+CREATE SCHEMA IF NOT EXISTS test;
 
 DROP TABLE IF EXISTS test.retailer;
 CREATE TABLE test.retailer
@@ -227,7 +238,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >= 28330
+                     WHERE id >=28495
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -239,7 +250,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >= 28330
+                     WHERE id >=28495
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
