@@ -238,7 +238,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >=28495
+                     WHERE id >= 28495
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -250,7 +250,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >=28495
+                     WHERE id >= 28495
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -390,7 +390,8 @@ WHERE staging."sourceType" != prod."sourceType"
    OR staging.marketplace != prod.marketplace
    OR staging."marketplaceData"::text != prod."marketplaceData"::text
    OR staging."priceMatchDescription" != prod."priceMatchDescription"
-   OR staging."priceMatch" != prod."priceMatch";
+   OR staging."priceMatch" != prod."priceMatch"
+   OR staging."priceLock" != prod."priceLock";
 
 /*  T04:  product differences in prices    */
 SELECT "retailerId",
