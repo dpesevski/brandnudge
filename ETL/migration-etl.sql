@@ -314,7 +314,8 @@ CREATE TYPE staging.retailer_data_pp AS
     marketplace             boolean,
     "marketplaceData"       json,
     "priceMatchDescription" text,
-    "priceMatch"            boolean
+    "priceMatch"            boolean,
+    "priceLock"             boolean
 );
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
@@ -545,6 +546,7 @@ CREATE TABLE staging.debug_tmp_product_pp
     "marketplaceData"       json,
     "priceMatchDescription" text,
     "priceMatch"            boolean,
+    "priceLock"             boolean,
     "eanIssues"             boolean,
     screenshot              text,
     "brandId"               integer,
@@ -826,6 +828,7 @@ BEGIN
                                      "marketplaceData",
                                      "priceMatchDescription",
                                      "priceMatch",
+                                     "priceLock",
                                      ROW_NUMBER()
                                      OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
@@ -873,6 +876,7 @@ BEGIN
                                "marketplaceData",
                                "priceMatchDescription",
                                "priceMatch",
+                               "priceLock",
                                ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
 
@@ -943,6 +947,7 @@ BEGIN
            dd_products."marketplaceData",
            dd_products."priceMatchDescription",
            dd_products."priceMatch",
+           dd_products."priceLock",
            checkEAN."eanIssues",
            dd_ranking.screenshot,
            prod_brand."brandId",
@@ -1010,7 +1015,7 @@ BEGIN
              LEFT OUTER JOIN prod_brand USING ("productBrand")
              LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = checkEAN.ean)
              LEFT OUTER JOIN prod_core ON (prod_core.ean = checkEAN.ean)
-             LEFT OUTER JOIN prod_retailersource using ("sourceId");
+             LEFT OUTER JOIN prod_retailersource USING ("sourceId");
 
     WITH ret_promo AS (SELECT id AS "retailerPromotionId",
                               "retailerId",
@@ -1327,7 +1332,8 @@ BEGIN
                               marketplace,
                               "marketplaceData",
                               "priceMatchDescription",
-                              "priceMatch")
+                              "priceMatch",
+                              "priceLock")
             SELECT "sourceType",
                    ean,
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
@@ -1365,7 +1371,8 @@ BEGIN
                    marketplace,
                    "marketplaceData",
                    "priceMatchDescription",
-                   "priceMatch"
+                   "priceMatch",
+                   "priceLock"
             FROM tmp_product_pp
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
@@ -1477,7 +1484,8 @@ BEGIN
              INNER JOIN tmp_product_pp AS product USING ("coreProductId");
 
     INSERT
-    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt")
+    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt",
+                                      "updatedAt")
     SELECT debug_test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
@@ -1869,7 +1877,7 @@ TO DO
                                  LEFT OUTER JOIN prod_brand USING ("productBrand")
                                  LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = tmp_daily_data.ean)
                                  LEFT OUTER JOIN prod_core ON (prod_core.ean = tmp_daily_data.ean)
-                                 LEFT OUTER JOIN prod_retailersource using ("sourceId")
+                                 LEFT OUTER JOIN prod_retailersource USING ("sourceId")
                             /*  CompareUtil.checkEAN    */
                             -- strict === true then '^M?([0-9]{13}|[0-9]{8})(,([0-9]{13}|[0-9]{8}))*S?$'
                                  CROSS JOIN LATERAL ( SELECT tmp_daily_data.ean !~
@@ -2465,7 +2473,8 @@ TO DO
              INNER JOIN tmp_product AS product USING ("coreProductId");
 
     INSERT
-    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt")
+    INTO staging.debug_coreRetailers (test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt",
+                                      "updatedAt")
     SELECT debug_test_run_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
