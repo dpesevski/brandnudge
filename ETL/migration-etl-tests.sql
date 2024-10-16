@@ -170,7 +170,7 @@ WHERE "retailerId" = 1337
 
  */
 
-SELECT staging.load_retailer_data(fetched_data, 'create-products-pp')
+SELECT staging.load_retailer_data(fetched_data, gal)
 FROM staging.debug_errors
 WHERE id > 8;
 
