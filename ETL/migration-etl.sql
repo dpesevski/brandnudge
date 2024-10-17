@@ -1317,8 +1317,6 @@ BEGIN
     FROM ins_coreProducts
     WHERE tmp_product_pp.ean = ins_coreProducts.ean;
 
-    RAISE NOTICE 'before createProductBy';
-
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
