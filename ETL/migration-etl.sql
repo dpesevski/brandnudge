@@ -634,7 +634,7 @@ CREATE TABLE staging.debug_coreretailertaxonomies
 DROP TABLE IF EXISTS staging.debug_products;
 CREATE TABLE staging.debug_products
 (
-    test_run_id integer,
+    --  test_run_id integer,
     LIKE "products"
 );
 DROP TABLE IF EXISTS staging.debug_productsdata;
@@ -1357,7 +1357,7 @@ BEGIN
                               "priceMatchDescription",
                               "priceMatch",
                               "priceLock",
-                              "isNpd")
+                              "isNpd", load_id)
             SELECT "sourceType",
                    ean,
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
@@ -1397,7 +1397,8 @@ BEGIN
                    "priceMatchDescription",
                    "priceMatch",
                    "priceLock",
-                   "isNpd"
+                   "isNpd",
+                   debug_test_run_id
             FROM tmp_product_pp
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
@@ -1432,7 +1433,7 @@ BEGIN
             RETURNING products.*),
          debug_ins_products AS (
              INSERT INTO staging.debug_products
-                 SELECT debug_test_run_id, * FROM ins_products)
+                 SELECT * FROM ins_products)
     UPDATE tmp_product_pp
     SET id=ins_products.id
     FROM ins_products
@@ -2345,7 +2346,7 @@ TO DO
                               "shelfPrice",
                               "productTitleDetail",
                               "sizeUnit",
-                              "dateId")
+                              "dateId", load_id)
             SELECT "sourceType",
                    ean,
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
@@ -2379,7 +2380,8 @@ TO DO
                    "shelfPrice",
                    "productTitleDetail",
                    "sizeUnit",
-                   "dateId"
+                   "dateId",
+                   debug_test_run_id
             FROM tmp_product
                      CROSS JOIN LATERAL ( SELECT CASE
                                                      WHEN "sourceType" = 'sainsburys' THEN
@@ -2415,7 +2417,7 @@ TO DO
          debug_ins_products AS (
              INSERT
                  INTO staging.debug_products
-                     SELECT debug_test_run_id, *
+                     SELECT *
                      FROM ins_products)
     UPDATE tmp_product
     SET id=ins_products.id
