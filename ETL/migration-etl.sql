@@ -263,7 +263,8 @@ CREATE TYPE staging.retailer_data AS
     "marketplaceData"       json,
     "priceMatchDescription" text,
     "priceMatch"            boolean,
-    "priceLock"             boolean
+    "priceLock"             boolean,
+    "isNpd"                 boolean
 );
 
 DROP TYPE IF EXISTS staging.t_promotion_pp CASCADE;
@@ -320,7 +321,8 @@ CREATE TYPE staging.retailer_data_pp AS
     "marketplaceData"       json,
     "priceMatchDescription" text,
     "priceMatch"            boolean,
-    "priceLock"             boolean
+    "priceLock"             boolean,
+    "isNpd"                 boolean
 );
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
@@ -432,7 +434,8 @@ CREATE TABLE IF NOT EXISTS staging.debug_tmp_daily_data
     "marketplaceData"       json,
     "priceMatchDescription" text,
     "priceMatch"            boolean,
-    "priceLock"             boolean
+    "priceLock"             boolean,
+    "isNpd"                 boolean
 );
 DROP TABLE IF EXISTS staging.debug_tmp_product;
 CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
@@ -491,6 +494,7 @@ CREATE TABLE IF NOT EXISTS staging.debug_tmp_product
     "priceMatchDescription" text,
     "priceMatch"            boolean,
     "priceLock"             boolean,
+    "isNpd"                 boolean,
     sell                    text,
     "fulfilParty"           text,
     "amazonFulfilParty"     text,
@@ -562,6 +566,7 @@ CREATE TABLE staging.debug_tmp_product_pp
     "priceMatchDescription" text,
     "priceMatch"            boolean,
     "priceLock"             boolean,
+    "isNpd"                 boolean,
     "eanIssues"             boolean,
     screenshot              text,
     "brandId"               integer,
@@ -844,6 +849,7 @@ BEGIN
                                      "priceMatchDescription",
                                      "priceMatch",
                                      "priceLock",
+                                     "isNpd",
                                      ROW_NUMBER()
                                      OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
@@ -892,6 +898,7 @@ BEGIN
                                "priceMatchDescription",
                                "priceMatch",
                                "priceLock",
+                               "isNpd",
                                ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
 
@@ -963,6 +970,7 @@ BEGIN
            dd_products."priceMatchDescription",
            dd_products."priceMatch",
            dd_products."priceLock",
+           dd_products."isNpd",
            checkEAN."eanIssues",
            dd_ranking.screenshot,
            prod_brand."brandId",
@@ -1309,7 +1317,7 @@ BEGIN
     FROM ins_coreProducts
     WHERE tmp_product_pp.ean = ins_coreProducts.ean;
 
-    raise notice 'before createProductBy';
+    RAISE NOTICE 'before createProductBy';
 
     /*  createProductBy    */
     WITH ins_products AS (
@@ -1349,7 +1357,8 @@ BEGIN
                               "marketplaceData",
                               "priceMatchDescription",
                               "priceMatch",
-                              "priceLock")
+                              "priceLock",
+                              "isNpd")
             SELECT "sourceType",
                    ean,
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
@@ -1388,7 +1397,8 @@ BEGIN
                    "marketplaceData",
                    "priceMatchDescription",
                    "priceMatch",
-                   "priceLock"
+                   "priceLock",
+                   "isNpd"
             FROM tmp_product_pp
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
@@ -1729,7 +1739,8 @@ BEGIN
            "marketplaceData",
            "priceMatchDescription",
            "priceMatch",
-           "priceLock"
+           "priceLock",
+           "isNpd"
 
 
     FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
@@ -1881,6 +1892,7 @@ BEGIN
                                "priceMatchDescription",
                                "priceMatch",
                                "priceLock",
+                               "isNpd",
                                sell,
                                "fulfilParty",
                                "amazonFulfilParty",
@@ -1980,6 +1992,7 @@ TO DO
            "priceMatchDescription",
            "priceMatch",
            "priceLock",
+           "isNpd",
            sell,
            "fulfilParty",
            "amazonFulfilParty",
