@@ -1317,6 +1317,7 @@ BEGIN
     FROM ins_coreProducts
     WHERE tmp_product_pp.ean = ins_coreProducts.ean;
 
+
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
@@ -1446,7 +1447,6 @@ BEGIN
     ON CONFLICT ("sourceId", "retailerId" )
         DO UPDATE
         SET "productId" = excluded."productId";
-
 
     INSERT INTO staging.debug_tmp_product_pp
     SELECT debug_test_run_id, *
