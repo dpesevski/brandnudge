@@ -172,7 +172,7 @@ WHERE "retailerId" = 1337
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id > 8;
+WHERE id =1;
 
 DELETE
 FROM staging.debug_errors
@@ -184,8 +184,8 @@ WHERE id = 7;
 
 
 SELECT *
-FROM staging.debug_test_run
-WHERE id IN (1300, 1298)
+FROM staging.load
+WHERE id IN (1300, 1298);
 
 
 SELECT *
