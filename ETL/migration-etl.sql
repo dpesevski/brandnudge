@@ -798,7 +798,7 @@ BEGIN
                              dd_date,
                              dd_retailer,
                              dd_date_id)
-    SELECT load_id,
+    SELECT load_retailer_data_pp.load_id,
            value,
            'create-products-pp' AS flag,
            dd_date,
@@ -1000,20 +1000,21 @@ BEGIN
 
     FROM dd_products
 
-             CROSS JOIN LATERAL (SELECT NULL              AS id,
-                                        NULL              AS "productId",
-                                        ''                AS category,
-                                        'taxonomy'           "categoryType",
-                                        NULL              AS "parentCategory",
-                                        dd_products.index AS "productRank",
-                                        1                 AS "pageNumber",
-                                        ''                AS screenshot,
-                                        NULL              AS "sourceCategoryId",
+             CROSS JOIN LATERAL (SELECT NULL                          AS id,
+                                        NULL                          AS "productId",
+                                        ''                            AS category,
+                                        'taxonomy'                       "categoryType",
+                                        NULL                          AS "parentCategory",
+                                        dd_products.index             AS "productRank",
+                                        1                             AS "pageNumber",
+                                        ''                            AS screenshot,
+                                        NULL                          AS "sourceCategoryId",
 
-                                        FALSE             AS featured, -- has a featuredRank but  if (!product.featured) product.featured = false;
-                                        dd_products.index AS "featuredRank",
+                                        FALSE                         AS featured, -- has a featuredRank but  if (!product.featured) product.featured = false;
+                                        dd_products.index             AS "featuredRank",
 
-                                        NULL              AS "taxonomyId"
+                                        NULL                          AS "taxonomyId",
+                                        load_retailer_data_pp.load_id AS load_id
         ) AS dd_ranking
              CROSS JOIN LATERAL
         (
@@ -1268,7 +1269,7 @@ BEGIN
                             size,
                             --reviewed,
                             "productOptions",
-                            load_id
+                            load_retailer_data_pp.load_id
                      FROM coreProductData
                      WHERE row_num = 1
                      ON CONFLICT (ean) DO UPDATE
@@ -1308,7 +1309,7 @@ BEGIN
                     bundled,
                     disabled,
                     reviewed,
-                    load_id
+                    load_retailer_data_pp.load_id
              --"ownLabelManufacturerId",
              --"brandbankManaged"
              FROM ins_coreProducts
@@ -1325,7 +1326,7 @@ BEGIN
          ins_coreProductBarcodes AS (
              INSERT
                  INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt", load_id)
-                     SELECT id, ean, NOW(), NOW(), load_id
+                     SELECT id, ean, NOW(), NOW(), load_retailer_data_pp.load_id
                      FROM ins_coreProducts
                      WHERE "updatedAt" >= NOW()::date
                      ON CONFLICT (barcode)
@@ -1421,7 +1422,7 @@ BEGIN
                    "priceMatch",
                    "priceLock",
                    "isNpd",
-                   load_id
+                   load_retailer_data_pp.load_id
             FROM tmp_product_pp
                      CROSS JOIN LATERAL (SELECT CASE
                                                     WHEN "sourceType" = 'sainsburys' THEN
@@ -1473,7 +1474,7 @@ BEGIN
         SET "productId" = excluded."productId";
 
     INSERT INTO staging.debug_tmp_product_pp
-    SELECT load_id, *
+    SELECT load_retailer_data_pp.load_id, *
     FROM tmp_product_pp;
 
     /*  createAmazonProduct */
@@ -1498,7 +1499,7 @@ BEGIN
                COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_pp.load_id
         FROM tmp_product_pp AS product
         WHERE LOWER("sourceType") LIKE '%amazon%'
         RETURNING "amazonProducts".*)
@@ -1520,7 +1521,7 @@ BEGIN
                             dd_retailer.id,
                             NOW() AS "createdAt",
                             NOW() AS "updatedAt",
-                            load_id
+                            load_retailer_data_pp.load_id
             FROM tmp_product_pp AS product
             ON CONFLICT ("coreProductId",
                 "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
@@ -1537,13 +1538,13 @@ BEGIN
     INSERT
     INTO staging.debug_coreRetailers (load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt",
                                       "updatedAt")
-    SELECT load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
+    SELECT load_retailer_data_pp.load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
 
     /*  coreRetailerSources */
     INSERT INTO "coreRetailerSources"("coreRetailerId", "retailerId", "sourceId", "createdAt", "updatedAt", load_id)
-    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt", load_id
+    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt", load_retailer_data_pp.load_id
     FROM tmp_coreRetailer
     ON CONFLICT DO NOTHING;
 
@@ -1559,7 +1560,7 @@ BEGIN
                screenshot,
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_pp.load_id
         FROM tmp_product_pp
         ON CONFLICT ("productId")
             DO NOTHING
@@ -1589,7 +1590,7 @@ BEGIN
                             NOW() AS "createdAt",
                             NOW() AS "updatedAt",
                             "promoId",
-                            load_id
+                            load_retailer_data_pp.load_id
             FROM tmp_product_pp
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
@@ -1624,7 +1625,7 @@ BEGIN
                    id                                               AS "productId",
                    NOW()                                            AS "createdAt",
                    NOW()                                               "updatedAt",
-                   load_id
+                   load_retailer_data_pp.load_id
             FROM tmp_product_pp
                      INNER JOIN (SELECT "coreProductId", title AS "titleParent"
                                  FROM "coreProductCountryData"
@@ -1650,7 +1651,7 @@ BEGIN
                dd_date_id          AS "dateId",
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_pp.load_id
         FROM tmp_coreRetailer
         ON CONFLICT ("coreRetailerId",
             "dateId")
@@ -1701,7 +1702,7 @@ BEGIN
         INSERT INTO staging.load(id,
                                  data,
                                  flag)
-        SELECT load_id,
+        SELECT load_retailer_data_base.load_id,
                value,
                'create-products' AS flag;
 
@@ -1815,7 +1816,7 @@ BEGIN
                              dd_date_id,
                              dd_source_type,
                              dd_sourceCategoryType)
-    SELECT load_id,
+    SELECT load_retailer_data_base.load_id,
            value,
            'create-products' AS flag,
            dd_date,
@@ -1830,7 +1831,7 @@ BEGIN
                            FROM tmp_daily_data),
          debug_ins_sourceCategories AS (INSERT
              INTO "sourceCategories" (name, type, "createdAt", "updatedAt", load_id)
-                 SELECT name, type, NOW(), NOW(), load_id
+                 SELECT name, type, NOW(), NOW(), load_retailer_data_base.load_id
                  FROM product_categ
                           LEFT OUTER JOIN "sourceCategories"
                                           USING (name, type)
@@ -1963,7 +1964,8 @@ TO DO
                                      "sourceCategoryId",
                                      featured,
                                      "featuredRank",
-                                     "taxonomyId")::"productsData"
+                                     "taxonomyId",
+                                     load_retailer_data_base.load_id)::"productsData"
                             ) AS ranking_data
                      FROM daily_data
                      GROUP BY "sourceId")
@@ -2270,7 +2272,7 @@ TO DO
                             size,
                             --reviewed,
                             "productOptions",
-                            load_id
+                            load_retailer_data_base.load_id
                      FROM coreProductData
                      WHERE row_num = 1
                      ON CONFLICT (ean) DO UPDATE
@@ -2311,7 +2313,7 @@ TO DO
                     bundled,
                     disabled,
                     reviewed,
-                    load_id
+                    load_retailer_data_base.load_id
              --"ownLabelManufacturerId",
              --"brandbankManaged"
              FROM ins_coreProducts
@@ -2328,7 +2330,7 @@ TO DO
          ins_coreProductBarcodes AS (
              INSERT
                  INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt", load_id)
-                     SELECT id, ean, NOW(), NOW(), load_id
+                     SELECT id, ean, NOW(), NOW(), load_retailer_data_base.load_id
                      FROM ins_coreProducts
                      WHERE "updatedAt" >= NOW()::date
                      ON CONFLICT (barcode)
@@ -2423,7 +2425,7 @@ TO DO
                    "priceMatch",
                    "priceLock",
                    "isNpd",
-                   load_id
+                   load_retailer_data_base.load_id
             FROM tmp_product
                      CROSS JOIN LATERAL ( SELECT CASE
                                                      WHEN "sourceType" = 'sainsburys' THEN
@@ -2495,7 +2497,7 @@ TO DO
                ranking.featured,
                ranking."featuredRank",
                ranking."taxonomyId",
-               load_id
+               load_retailer_data_base.load_id
         FROM tmp_product AS product
                  CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
         RETURNING "productsData".*)
@@ -2526,7 +2528,7 @@ TO DO
                COALESCE(COALESCE(product."amazonFulfilParty", product."fulfilParty"), '') AS "fulfilParty",
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_base.load_id
         FROM tmp_product AS product
         WHERE LOWER("sourceType") LIKE '%amazon%'
         RETURNING "amazonProducts".*)
@@ -2548,7 +2550,7 @@ TO DO
                             dd_retailer.id,
                             NOW() AS "createdAt",
                             NOW() AS "updatedAt",
-                            load_id
+                            load_retailer_data_base.load_id
             FROM tmp_product AS product
             ON CONFLICT ("coreProductId",
                 "retailerId") DO UPDATE SET "updatedAt" = excluded."updatedAt"
@@ -2565,13 +2567,13 @@ TO DO
     INSERT
     INTO staging.debug_coreRetailers (load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt",
                                       "updatedAt")
-    SELECT load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
+    SELECT load_retailer_data_base.load_id, "sourceId", id, "coreProductId", "retailerId", "createdAt", "updatedAt"
     FROM tmp_coreRetailer;
 
 
     /*  coreRetailerSources */
     INSERT INTO "coreRetailerSources"("coreRetailerId", "retailerId", "sourceId", "createdAt", "updatedAt", load_id)
-    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt", load_id
+    SELECT id, "retailerId", "sourceId", "createdAt", "updatedAt", load_retailer_data_base.load_id
     FROM tmp_coreRetailer
     ON CONFLICT DO NOTHING;
 
@@ -2585,7 +2587,7 @@ TO DO
                "taxonomyId"        AS "retailerTaxonomyId",
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_base.load_id
         FROM tmp_coreRetailer
                  INNER JOIN (SELECT DISTINCT tmp_product."sourceId",
                                              ranking."taxonomyId"
@@ -2615,7 +2617,7 @@ TO DO
                screenshot,
                NOW(),
                NOW(),
-               load_id
+               load_retailer_data_base.load_id
         FROM tmp_product
         ON CONFLICT ("productId")
             DO NOTHING
@@ -2644,7 +2646,7 @@ TO DO
                             NOW() AS "createdAt",
                             NOW() AS "updatedAt",
                             "promoId",
-                            load_id
+                            load_retailer_data_base.load_id
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(promotions) AS promo
             ON CONFLICT ("productId", "promoId", "retailerPromotionId", "description", "startDate", "endDate")
@@ -2679,7 +2681,7 @@ TO DO
                    id                                               AS "productId",
                    NOW()                                            AS "createdAt",
                    NOW()                                               "updatedAt",
-                   load_id
+                   load_retailer_data_base.load_id
             FROM tmp_product
                      INNER JOIN (SELECT "coreProductId", title AS "titleParent"
                                  FROM "coreProductCountryData"
@@ -2706,7 +2708,7 @@ TO DO
                    dd_date_id          AS "dateId",
                    NOW(),
                    NOW(),
-                   load_id
+                   load_retailer_data_base.load_id
             FROM tmp_coreRetailer
             ON CONFLICT ("coreRetailerId",
                 "dateId")
@@ -2729,7 +2731,7 @@ TO DO
                             ranking."sourceCategoryId",
                             NOW(),
                             NOW(),
-                            load_id
+                            load_retailer_data_base.load_id
             FROM tmp_product
                      CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
             ON CONFLICT ("coreProductId", "sourceCategoryId")
@@ -2750,11 +2752,11 @@ TO DO
         SET "productId" = excluded."productId";
 
     INSERT INTO staging.debug_tmp_product
-    SELECT load_id, *
+    SELECT load_retailer_data_base.load_id, *
     FROM tmp_product;
 
     INSERT INTO staging.debug_tmp_daily_data
-    SELECT load_id, *
+    SELECT load_retailer_data_base.load_id, *
     FROM tmp_daily_data;
 
     RETURN;
