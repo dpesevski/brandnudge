@@ -84,22 +84,22 @@ FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
  */
 SET WORK_MEM = '2GB';
-WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
+WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
-                  GROUP BY test_run_id, "retailerId", "sourceType")
+                  GROUP BY load_id, "retailerId", "sourceType")
 SELECT run_at::date,
        COUNT(*)                          AS run_count,
        SUM(product_count)                AS product_count,
        SUM(execution_time) / (1000 * 60) AS execution_time
-FROM staging.debug_test_run
+FROM staging.load
          INNER JOIN prod_cnt USING (id)
 GROUP BY 1
 ORDER BY 1 DESC;
 
 
-WITH prod_cnt AS (SELECT test_run_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
+WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
-                  GROUP BY test_run_id, "retailerId", "sourceType")
+                  GROUP BY load_id, "retailerId", "sourceType")
 SELECT id           AS test_run_id,
        --  fetched_data,
        "retailerId",
@@ -110,12 +110,12 @@ SELECT id           AS test_run_id,
        run_at,
        execution_time,
        dd_date
-FROM staging.debug_test_run
+FROM staging.load
          LEFT OUTER JOIN prod_cnt USING (id)
 ORDER BY id DESC;
 
 WITH debug_errors AS (SELECT debug_errors.id AS error_id,
-                             debug_test_run_id,
+                             load_id,
                              sql_state,
                              debug_errors.message,
                              detail,
@@ -125,20 +125,20 @@ WITH debug_errors AS (SELECT debug_errors.id AS error_id,
                              debug_errors.flag,
                              debug_errors.created_at
                       FROM staging.debug_errors),
-     debug_test_run AS (SELECT id     AS debug_test_run_id,
-                               -- data,
-                               flag,
-                               run_at AS created_at,
-                               dd_date,
-                               dd_retailer,
-                               dd_date_id,
-                               dd_source_type,
-                               dd_sourcecategorytype
-                        FROM staging.debug_test_run)
+     load AS (SELECT id     AS load_id,
+                     -- data,
+                     flag,
+                     run_at AS created_at,
+                     dd_date,
+                     dd_retailer,
+                     dd_date_id,
+                     dd_source_type,
+                     dd_sourcecategorytype
+              FROM staging.load)
 SELECT *
 FROM debug_errors
-         LEFT OUTER JOIN debug_test_run
-                         USING (debug_test_run_id)
+         LEFT OUTER JOIN load
+                         USING (load_id)
 ORDER BY error_id;
 /*
 WITH load AS (SELECT id     AS debug_test_run_id,
@@ -170,7 +170,7 @@ WHERE "retailerId" = 1337
 
  */
 
-SELECT staging.load_retailer_data(fetched_data, gal)
+SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
 WHERE id > 8;
 
