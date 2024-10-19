@@ -100,7 +100,7 @@ ORDER BY 1 DESC;
 WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY load_id, "retailerId", "sourceType")
-SELECT id           AS test_run_id,
+SELECT id           AS load_id,
        --  fetched_data,
        "retailerId",
        "sourceType" AS retailer_name,
@@ -191,4 +191,7 @@ WHERE id IN (1300, 1298);
 SELECT *
 FROM pg_stat_activity
 WHERE datname = 'brandnudge-dev'
-  AND state != 'idle'
+  AND state != 'idle';
+
+
+select * from products where load_id=67;
