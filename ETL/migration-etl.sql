@@ -33,6 +33,8 @@ ALTER TABLE public."coreRetailerSources"
 ALTER TABLE public."coreRetailerTaxonomies"
     ADD IF NOT EXISTS load_id integer;
 
+CREATE INDEX products_load_id_index ON products (load_id);
+
 /*
     UQ indexes are deployed in prod
     with temporal condition on "createdAt" >= '2024-05-31 20:21:46.840963+00';
