@@ -238,7 +238,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >= 28528
+                     WHERE id > 28594
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -250,7 +250,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >= 28528
+                     WHERE id > 28594
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -338,17 +338,21 @@ WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
                            FULL OUTER JOIN staging USING ("retailerId", dates_date, "sourceId")
                   GROUP BY "retailerId")
 SELECT "retailerId",
-       is_pp,
+       retailer_name,
        prod_prd_count,
        stg_prd_count,
        prod_prd_count - stg_prd_count AS prd_count_diff
 FROM prod_cnt
-         FULL OUTER JOIN test.retailer USING ("retailerId")
+         FULL OUTER JOIN (SELECT "retailerId", retailers.name AS retailer_name
+                          FROM public.retailers
+                                   INNER JOIN test.retailer ON (retailer."retailerId" = retailers.id)) AS retailer
+                         USING ("retailerId")
 ORDER BY "retailerId";
+-- -2160
 
 
 /*  T02:  missing products in prod    */
-SELECT *
+SELECT staging.*
 FROM test.tstg_products AS staging
          LEFT OUTER JOIN test.tprd_products AS prod
                          USING ("retailerId", dates_date, "sourceId")
@@ -479,17 +483,13 @@ WHERE staging."promotionDescription" != prod."promotionDescription"
 ORDER BY staging."sourceId" DESC;
 
 /*  T09:  product differences in href    */
-WITH staging AS (SELECT tstg_products.*,
-                        test_run_id
-                 FROM test.tstg_products
-                          INNER JOIN staging.debug_tmp_product USING (id))
 SELECT "retailerId",
        dates_date,
        "sourceId",
-       test_run_id,
+       load_id,
        staging."href" AS staging_href,
        prod."href"    AS prod_href
-FROM staging
+FROM test.tstg_products staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."href" != prod."href";
