@@ -14,15 +14,12 @@ ALTER TABLE public."amazonProducts"
 
 ALTER TABLE public."retailers"
     ADD IF NOT EXISTS load_id integer;
-ALTER TABLE public."sourceCategories"
-    ADD IF NOT EXISTS load_id integer;
+
 ALTER TABLE public."coreProducts"
     ADD IF NOT EXISTS load_id integer;
 ALTER TABLE public."coreProductBarcodes"
     ADD IF NOT EXISTS load_id integer;
 ALTER TABLE public."coreProductCountryData"
-    ADD IF NOT EXISTS load_id integer;
-ALTER TABLE public."coreProductSourceCategories"
     ADD IF NOT EXISTS load_id integer;
 ALTER TABLE public."coreRetailerDates"
     ADD IF NOT EXISTS load_id integer;
@@ -384,7 +381,6 @@ CREATE TABLE IF NOT EXISTS staging.load
     dd_retailer           retailers,
     dd_date_id            integer,
     dd_source_type        text,
-    dd_sourceCategoryType text,
     execution_time        double precision
 );
 
@@ -638,11 +634,6 @@ CREATE TABLE staging.debug_coreproducts
 (
     LIKE "coreProducts"
 );
-DROP TABLE IF EXISTS staging.debug_coreproductsourcecategories;
-CREATE TABLE staging.debug_coreproductsourcecategories
-(
-    LIKE "coreProductSourceCategories"
-);
 DROP TABLE IF EXISTS staging.debug_coreretailerdates;
 CREATE TABLE staging.debug_coreretailerdates
 (
@@ -683,11 +674,6 @@ DROP TABLE IF EXISTS staging.debug_retailers;
 CREATE TABLE staging.debug_retailers
 (
     LIKE "retailers"
-);
-DROP TABLE IF EXISTS staging.debug_sourcecategories;
-CREATE TABLE staging.debug_sourcecategories
-(
-    LIKE "sourceCategories"
 );
 
 DROP TABLE IF EXISTS staging.products_last;
@@ -1010,7 +996,7 @@ BEGIN
                                         dd_products.index             AS "productRank",
                                         1                             AS "pageNumber",
                                         ''                            AS screenshot,
-                                        NULL                          AS "sourceCategoryId",
+                                       --NULL                          AS "sourceCategoryId",
 
                                         FALSE                         AS featured, -- has a featuredRank but  if (!product.featured) product.featured = false;
                                         dd_products.index             AS "featuredRank",
@@ -1679,7 +1665,6 @@ $$
 DECLARE
     dd_date               date;
     dd_source_type        text;
-    dd_sourceCategoryType text;
     dd_date_id            integer;
     dd_retailer           retailers;
 BEGIN
@@ -1779,8 +1764,8 @@ BEGIN
     /* value -> 'products' */
     --RETURN;
 
-    SELECT date, "sourceType", CASE WHEN "categoryType" = 'search' THEN 'search' ELSE 'taxonomy' END
-    INTO dd_date, dd_source_type, dd_sourceCategoryType
+    SELECT date, "sourceType"
+    INTO dd_date, dd_source_type
     FROM tmp_daily_data
     LIMIT 1;
 
@@ -1816,40 +1801,18 @@ BEGIN
                              dd_date,
                              dd_retailer,
                              dd_date_id,
-                             dd_source_type,
-                             dd_sourceCategoryType)
+                             dd_source_type)
     SELECT load_retailer_data_base.load_id,
            value,
            'create-products' AS flag,
            dd_date,
            dd_retailer,
            dd_date_id,
-           dd_source_type,
-           dd_sourceCategoryType;
-
-    /*  create the new categories   */
-    WITH product_categ AS (SELECT DISTINCT category              AS name,
-                                           dd_sourceCategoryType AS type
-                           FROM tmp_daily_data),
-         debug_ins_sourceCategories AS (INSERT
-             INTO "sourceCategories" (name, type, "createdAt", "updatedAt", load_id)
-                 SELECT name, type, NOW(), NOW(), load_retailer_data_base.load_id
-                 FROM product_categ
-                          LEFT OUTER JOIN "sourceCategories"
-                                          USING (name, type)
-                 WHERE "sourceCategories".id IS NULL
-                 RETURNING "sourceCategories".*)
-    INSERT
-    INTO staging.debug_sourceCategories
-    SELECT *
-    FROM debug_ins_sourceCategories;
+           dd_source_type;
 
     DROP TABLE IF EXISTS tmp_product;
     CREATE TEMPORARY TABLE tmp_product ON COMMIT DROP AS
-    WITH prod_categ AS (SELECT id AS "sourceCategoryId", name AS category
-                        FROM "sourceCategories"
-                        WHERE type = dd_sourceCategoryType),
-         prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
+    WITH prod_brand AS (SELECT id AS "brandId", name AS "productBrand" FROM brands),
          prod_barcode AS (SELECT barcode, "coreProductId" FROM "coreProductBarcodes"),
          prod_core AS (SELECT ean, id AS "coreProductId" FROM "coreProducts"),
          prod_retailersource AS (SELECT "sourceId", "coreProductId"
@@ -1906,7 +1869,6 @@ BEGIN
                                "sourceId",
                                "sourceType",
                                COALESCE("taxonomyId", 0)                                                     AS "taxonomyId",
-                               "sourceCategoryId",
                                "brandId",
                                "productOptions",
                                checkEAN."eanIssues",
@@ -1943,7 +1905,6 @@ TO DO
 
 */
                         FROM tmp_daily_data
-                                 INNER JOIN prod_categ USING (category)
                                  LEFT OUTER JOIN prod_brand USING ("productBrand")
                                  LEFT OUTER JOIN prod_barcode ON (prod_barcode.barcode = tmp_daily_data.ean)
                                  LEFT OUTER JOIN prod_core ON (prod_core.ean = tmp_daily_data.ean)
@@ -1963,7 +1924,7 @@ TO DO
                                      "productRank",
                                      "pageNumber",
                                      screenshot,
-                                     "sourceCategoryId",
+                                     --"sourceCategoryId",
                                      featured,
                                      "featuredRank",
                                      "taxonomyId",
@@ -2484,7 +2445,7 @@ TO DO
                                                                  "productRank",
                                                                  "pageNumber",
                                                                  screenshot,
-                                                                 "sourceCategoryId",
+                                                                -- "sourceCategoryId",
                                                                  featured,
                                                                  "featuredRank",
                                                                  "taxonomyId", load_id)
@@ -2495,7 +2456,7 @@ TO DO
                ranking."productRank",
                ranking."pageNumber",
                ranking.screenshot,
-               ranking."sourceCategoryId",
+              -- ranking."sourceCategoryId",
                ranking.featured,
                ranking."featuredRank",
                ranking."taxonomyId",
@@ -2720,30 +2681,6 @@ TO DO
     INTO staging.debug_coreRetailerDates
     SELECT *
     FROM debug_ins_coreRetailerDates;
-    --  UPDATE SET "updatedAt" = excluded."updatedAt";
-
-
-    /*  coreProductSourceCategory   */
-    WITH debug_ins_coreProductSourceCategories AS (
-        INSERT INTO "coreProductSourceCategories" ("coreProductId",
-                                                   "sourceCategoryId",
-                                                   "createdAt",
-                                                   "updatedAt", load_id)
-            SELECT DISTINCT tmp_product."coreProductId",
-                            ranking."sourceCategoryId",
-                            NOW(),
-                            NOW(),
-                            load_retailer_data_base.load_id
-            FROM tmp_product
-                     CROSS JOIN LATERAL UNNEST(ranking_data) AS ranking
-            ON CONFLICT ("coreProductId", "sourceCategoryId")
-                WHERE "createdAt" >= '2024-05-31 20:21:46.840963+00'
-                DO NOTHING
-            RETURNING "coreProductSourceCategories".*)
-    INSERT
-    INTO staging.debug_coreProductSourceCategories
-    SELECT *
-    FROM debug_ins_coreProductSourceCategories;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     INSERT INTO staging.products_last ("retailerId", "sourceId", "productId")
