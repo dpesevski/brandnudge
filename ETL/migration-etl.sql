@@ -1,3 +1,23 @@
+ALTER TABLE "productsData"
+    DROP COLUMN "sourceCategoryId";
+
+
+/*
+FK to "sourceCategories"
++---------------------------+
+|TABLE_NAME                 |
++---------------------------+
+|productsData               |
+|companySourceCategories    |
+|coreProductSourceCategories|
++---------------------------+
+*/
+
+DROP TABLE "companySourceCategories";
+DROP TABLE "coreProductSourceCategories";
+DROP TABLE "userSourceCategories";
+DROP TABLE "sourceCategories";
+
 ALTER TABLE public."products"
     ADD IF NOT EXISTS load_id integer;
 
