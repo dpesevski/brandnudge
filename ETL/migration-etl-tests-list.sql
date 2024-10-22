@@ -348,7 +348,6 @@ FROM prod_cnt
                                    INNER JOIN test.retailer ON (retailer."retailerId" = retailers.id)) AS retailer
                          USING ("retailerId")
 ORDER BY "retailerId";
--- -2160
 
 
 /*  T02:  missing products in prod    */

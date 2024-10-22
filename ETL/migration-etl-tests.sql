@@ -96,6 +96,15 @@ FROM staging.load
 GROUP BY 1
 ORDER BY 1 DESC;
 
+SELECT id           AS load_id,
+       --  fetched_data,
+
+       flag,
+--
+       run_at,
+       execution_time,
+       dd_date
+FROM staging.load;
 
 WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products

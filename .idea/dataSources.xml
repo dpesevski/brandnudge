@@ -1,39 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="prod" uuid="ba069f19-ddf4-4dc4-9996-4566a879ba68">
+    <data-source source="LOCAL" name="prod" uuid="9bcdbf68-5b8a-4364-bb0d-01e577e53d31">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="dev" uuid="1a6fec4e-1969-41ff-96b3-72e4e8a1f93b">
+    <data-source source="LOCAL" name="dev" uuid="c81e8757-836b-45af-965b-add5836ad725">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
       <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-v2.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
-    <data-source source="LOCAL" name="test" uuid="827bcada-349e-4c4e-ad17-0b6a1ad138b2">
+    <data-source source="LOCAL" name="staging" uuid="4cdc2227-b95e-4814-bfa1-b431fab721d0">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
-      <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-for-tuning.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
-      <working-dir>$ProjectFileDir$</working-dir>
-    </data-source>
-    <data-source source="LOCAL" name="_localhost" uuid="9dba8972-3c9a-435a-b2e1-b881999da7e4">
-      <driver-ref>postgresql</driver-ref>
-      <synchronize>true</synchronize>
-      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
-      <jdbc-url>jdbc:postgresql://localhost:5434/brandnudge_local</jdbc-url>
-      <working-dir>$ProjectFileDir$</working-dir>
-    </data-source>
-    <data-source source="LOCAL" name="test-migrate" uuid="9942932e-ca2e-481a-ae27-cbfa2a2986f6">
-      <driver-ref>postgresql</driver-ref>
-      <synchronize>true</synchronize>
-      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
-      <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-migrate.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
+      <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-for-migration.cluster-ro-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>
