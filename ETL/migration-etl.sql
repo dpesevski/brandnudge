@@ -18,6 +18,10 @@ DROP TABLE "coreProductSourceCategories";
 DROP TABLE "userSourceCategories";
 DROP TABLE "sourceCategories";
 
+/*  remove ranking from PP as it is not applicable    */
+ALTER TABLE staging.debug_tmp_product_pp
+    DROP COLUMN dd_ranking;
+
 /*  add load_id to tables in public schema    */
 ALTER TABLE public."products"
     ADD IF NOT EXISTS load_id integer;
@@ -394,15 +398,15 @@ CREATE TYPE staging.t_promotion_mb AS
 DROP TABLE IF EXISTS staging.load;
 CREATE TABLE IF NOT EXISTS staging.load
 (
-    id                    serial,
-    data                  json,
-    flag                  text,
-    run_at                timestamp DEFAULT NOW(),
-    dd_date               date,
-    dd_retailer           retailers,
-    dd_date_id            integer,
-    dd_source_type        text,
-    execution_time        double precision
+    id             serial,
+    data           json,
+    flag           text,
+    run_at         timestamp DEFAULT NOW(),
+    dd_date        date,
+    dd_retailer    retailers,
+    dd_date_id     integer,
+    dd_source_type text,
+    execution_time double precision
 );
 
 DROP TABLE IF EXISTS staging.debug_errors;
@@ -624,7 +628,6 @@ CREATE TABLE staging.debug_tmp_product_pp
     "eanIssues"             boolean,
     screenshot              text,
     "brandId"               integer,
-    dd_ranking              "productsData",
     "EANs"                  text[],
     promotions              staging.t_promotion_mb[]
 );
@@ -1001,43 +1004,23 @@ BEGIN
            dd_products."priceLock",
            dd_products."isNpd",
            checkEAN."eanIssues",
-           dd_ranking.screenshot,
+           ''                                                                  AS screenshot,
            prod_brand."brandId",
-           dd_ranking::"productsData",
            trsf_ean."EANs",
            COALESCE(trsf_promo.promotions, ARRAY []::staging.t_promotion_mb[]) AS promotions
 
     FROM dd_products
-
-             CROSS JOIN LATERAL (SELECT NULL                          AS id,
-                                        NULL                          AS "productId",
-                                        ''                            AS category,
-                                        'taxonomy'                       "categoryType",
-                                        NULL                          AS "parentCategory",
-                                        dd_products.index             AS "productRank",
-                                        1                             AS "pageNumber",
-                                        ''                            AS screenshot,
-                                       --NULL                          AS "sourceCategoryId",
-
-                                        FALSE                         AS featured, -- has a featuredRank but  if (!product.featured) product.featured = false;
-                                        dd_products.index             AS "featuredRank",
-
-                                        NULL                          AS "taxonomyId",
-                                        load_retailer_data_pp.load_id AS load_id
-        ) AS dd_ranking
-             CROSS JOIN LATERAL
-        (
-        SELECT CASE
-                   /*
-                       Matt (5/13/2024) :https://brand-nudge-group.slack.com/archives/C068Y51TS6L/p1715604955904309?thread_ts=1715603977.153229&cid=C068Y51TS6L
-                       if ean is NULL or “” then we will send either <sourceId> as <ean> or <retailer>_<sourceId> as <ean>.
-                   */
-                   WHEN dd_products.ean IS NULL THEN ARRAY [dd_products."sourceId"]:: TEXT[]
-                   WHEN
-                       dd_products."productOptions"
-                       THEN ARRAY [ dd_retailer.name || '_' || dd_products."sourceId"] :: TEXT[]
-                   ELSE
-                       STRING_TO_ARRAY(dd_products.ean, ',') END AS "EANs"
+             CROSS JOIN LATERAL ( SELECT CASE
+                                             /*
+                                                 Matt (5/13/2024) :https://brand-nudge-group.slack.com/archives/C068Y51TS6L/p1715604955904309?thread_ts=1715603977.153229&cid=C068Y51TS6L
+                                                 if ean is NULL or “” then we will send either <sourceId> as <ean> or <retailer>_<sourceId> as <ean>.
+                                             */
+                                             WHEN dd_products.ean IS NULL THEN ARRAY [dd_products."sourceId"]:: TEXT[]
+                                             WHEN
+                                                 dd_products."productOptions"
+                                                 THEN ARRAY [ dd_retailer.name || '_' || dd_products."sourceId"] :: TEXT[]
+                                             ELSE
+                                                 STRING_TO_ARRAY(dd_products.ean, ',') END AS "EANs"
         ) AS trsf_ean
              CROSS JOIN LATERAL ( SELECT trsf_ean."EANs"[1]         AS ean,
                                          CASE
@@ -1350,6 +1333,18 @@ BEGIN
     FROM ins_coreProducts
     WHERE tmp_product_pp.ean = ins_coreProducts.ean;
 
+    WITH ins_coreProductBarcodes AS (
+        INSERT
+            INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt", load_id)
+                SELECT "coreProductId", ean, NOW(), NOW(), load_retailer_data_pp.load_id
+                FROM tmp_product_pp
+                ON CONFLICT (barcode)
+                    DO NOTHING
+                RETURNING "coreProductBarcodes".*)
+    INSERT
+    INTO staging.debug_coreProductBarcodes
+    SELECT *
+    FROM ins_coreProductBarcodes;
 
     /*  createProductBy    */
     WITH ins_products AS (
@@ -1684,10 +1679,10 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json, load_id i
 AS
 $$
 DECLARE
-    dd_date               date;
-    dd_source_type        text;
-    dd_date_id            integer;
-    dd_retailer           retailers;
+    dd_date        date;
+    dd_source_type text;
+    dd_date_id     integer;
+    dd_retailer    retailers;
 BEGIN
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
@@ -1945,7 +1940,6 @@ TO DO
                                      "productRank",
                                      "pageNumber",
                                      screenshot,
-                                     --"sourceCategoryId",
                                      featured,
                                      "featuredRank",
                                      "taxonomyId",
@@ -2329,6 +2323,18 @@ TO DO
     FROM ins_coreProducts
     WHERE tmp_product.ean = ins_coreProducts.ean;
 
+    WITH ins_coreProductBarcodes AS (
+        INSERT
+            INTO "coreProductBarcodes" ("coreProductId", barcode, "createdAt", "updatedAt", load_id)
+                SELECT "coreProductId", ean, NOW(), NOW(), load_retailer_data_base.load_id
+                FROM tmp_product
+                ON CONFLICT (barcode)
+                    DO NOTHING
+                RETURNING "coreProductBarcodes".*)
+    INSERT
+    INTO staging.debug_coreProductBarcodes
+    SELECT *
+    FROM ins_coreProductBarcodes;
 
     /*  createProductBy    */
     WITH ins_products AS (
@@ -2466,7 +2472,6 @@ TO DO
                                                                  "productRank",
                                                                  "pageNumber",
                                                                  screenshot,
-                                                                -- "sourceCategoryId",
                                                                  featured,
                                                                  "featuredRank",
                                                                  "taxonomyId", load_id)
@@ -2477,7 +2482,6 @@ TO DO
                ranking."productRank",
                ranking."pageNumber",
                ranking.screenshot,
-              -- ranking."sourceCategoryId",
                ranking.featured,
                ranking."featuredRank",
                ranking."taxonomyId",
