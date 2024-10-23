@@ -141,8 +141,7 @@ WITH debug_errors AS (SELECT debug_errors.id AS error_id,
                      dd_date,
                      dd_retailer,
                      dd_date_id,
-                     dd_source_type,
-                     dd_sourcecategorytype
+                     dd_source_type
               FROM staging.load)
 SELECT *
 FROM debug_errors

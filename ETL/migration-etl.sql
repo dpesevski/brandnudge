@@ -1,6 +1,6 @@
+/*  remove sourceCategories and related tables    */
 ALTER TABLE "productsData"
     DROP COLUMN "sourceCategoryId";
-
 
 /*
 FK to "sourceCategories"
@@ -18,6 +18,7 @@ DROP TABLE "coreProductSourceCategories";
 DROP TABLE "userSourceCategories";
 DROP TABLE "sourceCategories";
 
+/*  add load_id to tables in public schema    */
 ALTER TABLE public."products"
     ADD IF NOT EXISTS load_id integer;
 
