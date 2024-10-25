@@ -1680,10 +1680,9 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json, load_id i
 AS
 $$
 DECLARE
-    dd_date        date;
-    dd_source_type text;
-    dd_date_id     integer;
-    dd_retailer    retailers;
+    dd_date     date;
+    dd_date_id  integer;
+    dd_retailer retailers;
 BEGIN
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
@@ -1714,7 +1713,6 @@ BEGIN
     END IF;
 
     dd_date := value #> '{products,0,date}';
-    dd_source_type := value #> '{products,0,sourceType}';
 
     DROP TABLE IF EXISTS tmp_daily_data;
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
@@ -1737,7 +1735,7 @@ BEGIN
            "isFeatured",
            LEFT("pageNumber", 255)        AS "pageNumber",
            screenshot,
-           dd_source_type                 AS "sourceType",
+           dd_retailer.name               AS "sourceType",
            "taxonomyId",
            nutritional,
            "productInfo",
@@ -1782,14 +1780,6 @@ BEGIN
     FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data,
                                  value #> '{products}') AS product;
     /* value -> 'products' */
-    --RETURN;
-/*
-    SELECT date, "sourceType"
-    INTO dd_date, dd_source_type
-    FROM tmp_daily_data
-    LIMIT 1;
-*/
-
 
     /*  ProductService.getCreateProductCommonData  */
     /*  dates.findOrCreate  */
@@ -1802,20 +1792,6 @@ BEGIN
         DO UPDATE
         SET "updatedAt"=NOW()
     RETURNING id INTO dd_date_id;
-
-/*
-    /*  RetailerService.getRetailerByName   */
-    SELECT *
-    INTO dd_retailer
-    FROM retailers
-    WHERE name = dd_source_type;
-
-    IF dd_retailer IS NULL THEN
-        INSERT INTO retailers (name, "countryId", "createdAt", "updatedAt")
-        VALUES (dd_source_type, 1, NOW(), NOW())
-        RETURNING * INTO dd_retailer; /*   1-GB */
-    END IF;
-*/
 
     INSERT INTO staging.load(id,
                              data,
@@ -1830,7 +1806,7 @@ BEGIN
            dd_date,
            dd_retailer,
            dd_date_id,
-           dd_source_type;
+           dd_retailer.name;
 
     DROP TABLE IF EXISTS tmp_product;
     CREATE TEMPORARY TABLE tmp_product ON COMMIT DROP AS
