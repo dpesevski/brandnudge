@@ -96,7 +96,7 @@ FROM staging.load
 GROUP BY 1
 ORDER BY 1 DESC;
 
-SELECT id           AS load_id,
+SELECT id AS load_id,
        --  fetched_data,
 
        flag,
@@ -180,7 +180,11 @@ WHERE "retailerId" = 1337
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id =1;
+WHERE id = 1;
+
+SELECT staging.load_retailer_data(data, flag)
+FROM staging.load
+WHERE id = 299;
 
 DELETE
 FROM staging.debug_errors
@@ -202,4 +206,10 @@ WHERE datname = 'brandnudge-dev'
   AND state != 'idle';
 
 
-select * from products where load_id=67;
+SELECT *
+FROM products
+WHERE load_id = 67;
+
+select * from staging.debug_tmp_product_pp where load_id=301
+
+select data->'retailer', data#>'{products,0,sourceType}' from staging.load where id=303;

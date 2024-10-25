@@ -231,14 +231,14 @@ WHERE id >=28528
 ORDER BY "createdAt" DESC NULLS LAST;
 
 */
-
+SET WORK_MEM = '2GB';
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id > 28594
+                     WHERE id >= 28759
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -250,7 +250,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id > 28594
+                     WHERE id >= 28924
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -358,7 +358,7 @@ FROM test.tstg_products AS staging
 WHERE prod.id IS NULL;
 
 /*  T03:  product differences in general attributes    */
-SELECT COUNT(*)
+SELECT *
 FROM test.tstg_products AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")

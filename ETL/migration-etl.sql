@@ -1457,7 +1457,8 @@ BEGIN
                         "productInStock" = excluded."productInStock",
                         "productBrand" = excluded."productBrand",
                         "reviewsCount" = excluded."reviewsCount",
-                        "reviewsStars" = excluded."reviewsStars"
+                        "reviewsStars" = excluded."reviewsStars",
+                        load_id = excluded.load_id
             RETURNING products.*),
          debug_ins_products AS (
              INSERT INTO staging.debug_products
@@ -1712,11 +1713,14 @@ BEGIN
         RETURN;
     END IF;
 
+    dd_date := value #> '{products,0,date}';
+    dd_source_type := value #> '{products,0,sourceType}';
+
     DROP TABLE IF EXISTS tmp_daily_data;
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
     SELECT dd_retailer,
            ean,
-           product.date,
+           dd_date                        AS date,
            href,
            LEFT(product.size, 255)        AS size,
            "eposId",
@@ -1733,7 +1737,7 @@ BEGIN
            "isFeatured",
            LEFT("pageNumber", 255)        AS "pageNumber",
            screenshot,
-           "sourceType",
+           dd_source_type                 AS "sourceType",
            "taxonomyId",
            nutritional,
            "productInfo",
@@ -1779,11 +1783,13 @@ BEGIN
                                  value #> '{products}') AS product;
     /* value -> 'products' */
     --RETURN;
-
+/*
     SELECT date, "sourceType"
     INTO dd_date, dd_source_type
     FROM tmp_daily_data
     LIMIT 1;
+*/
+
 
     /*  ProductService.getCreateProductCommonData  */
     /*  dates.findOrCreate  */
@@ -2446,7 +2452,8 @@ TO DO
                         "productInStock" = excluded."productInStock",
                         "productBrand" = excluded."productBrand",
                         "reviewsCount" = excluded."reviewsCount",
-                        "reviewsStars" = excluded."reviewsStars"
+                        "reviewsStars" = excluded."reviewsStars",
+                        load_id = excluded.load_id
             RETURNING *),
          debug_ins_products AS (
              INSERT
