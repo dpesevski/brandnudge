@@ -705,10 +705,11 @@ CREATE TABLE staging.products_last AS
 WITH past_product_records AS (SELECT "retailerId",
                                      "sourceId",
                                      id                                                                  AS "productId",
+                                     date,
                                      ROW_NUMBER()
                                      OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "dateId" DESC) AS rownum
                               FROM products)
-SELECT "retailerId", "sourceId", "productId"
+SELECT "retailerId", "sourceId", "productId", date
 FROM past_product_records
 WHERE rownum = 1;
 
@@ -845,7 +846,7 @@ BEGIN
                                                         "coreRetailerSources"."coreRetailerId" = "coreRetailers".id
                                                         )),
 
-        tmp_daily_data_pp AS (SELECT product.date,
+        tmp_daily_data_pp AS (SELECT dd_date                                               AS date,
                                      product."countryCode",
                                      product."currency",
                                      product."sourceId",
@@ -1471,12 +1472,13 @@ BEGIN
       AND tmp_product_pp."dateId" = ins_products."dateId";
 
 
-    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId")
-    SELECT "retailerId", "sourceId", id AS "productId"
+    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId", date)
+    SELECT "retailerId", "sourceId", id AS "productId", date
     FROM tmp_product_pp
     ON CONFLICT ("sourceId", "retailerId" )
         DO UPDATE
-        SET "productId" = excluded."productId";
+        SET "productId" = excluded."productId",
+            date=excluded.date;
 
     INSERT INTO staging.debug_tmp_product_pp
     SELECT load_retailer_data_pp.load_id, *
@@ -2691,12 +2693,13 @@ TO DO
     FROM debug_ins_coreRetailerDates;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId")
-    SELECT "retailerId", "sourceId", id AS "productId"
+    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId", date)
+    SELECT "retailerId", "sourceId", id AS "productId", date
     FROM tmp_product
     ON CONFLICT ("sourceId", "retailerId" )
         DO UPDATE
-        SET "productId" = excluded."productId";
+        SET "productId" = excluded."productId",
+            date=excluded.date;
 
     INSERT INTO staging.debug_tmp_product
     SELECT load_retailer_data_base.load_id, *
