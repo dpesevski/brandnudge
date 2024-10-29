@@ -700,6 +700,38 @@ CREATE TABLE staging.debug_retailers
     LIKE "retailers"
 );
 
+DROP TABLE IF EXISTS staging.product_status;
+CREATE TABLE staging.product_status AS
+WITH retailer_latest_load AS (SELECT "retailerId", MAX(date) AS date
+                              FROM products
+                              GROUP BY 1),
+     past_product_records AS (SELECT "retailerId",
+                                     "sourceId",
+                                     id                                                                  AS "productId",
+                                     date,
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "dateId" DESC) AS rownum
+                              FROM products),
+     latest AS (SELECT "retailerId", "sourceId", "productId", date
+                FROM past_product_records
+                WHERE rownum = 1),
+     prev AS (SELECT "retailerId", "sourceId", "productId", date
+              FROM past_product_records
+              WHERE rownum = 2)
+SELECT "retailerId",
+       "sourceId",
+       latest."productId",
+       latest.date,
+       CASE
+           WHEN latest.date < retailer_latest_load.date THEN 'De-listead'
+           WHEN prev.date IS NULL THEN 'Newly'
+           WHEN prev.date < latest.date - '1 day'::interval THEN 'Re-Listed'
+           ELSE 'Listed'
+           END AS status
+FROM latest
+         INNER JOIN retailer_latest_load USING ("retailerId")
+         LEFT OUTER JOIN prev USING ("retailerId", "sourceId");
+
 DROP TABLE IF EXISTS staging.products_last;
 CREATE TABLE staging.products_last AS
 WITH past_product_records AS (SELECT "retailerId",
@@ -780,9 +812,10 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json, load_id int
 AS
 $$
 DECLARE
-    dd_date     date;
-    dd_date_id  integer;
-    dd_retailer retailers;
+    dd_date                    date;
+    dd_date_id                 integer;
+    dd_retailer                retailers;
+    dd_retailer_last_load_date date;
 BEGIN
 
     dd_date := value #> '{products,0,date}';
@@ -805,6 +838,10 @@ BEGIN
         SET "updatedAt"=NOW()
     RETURNING id
         INTO dd_date_id;
+
+    SELECT MAX(date) AS dd_retailer_last_load_date
+    FROM staging.products_last
+    WHERE "retailerId" = dd_retailer.id;
 
     INSERT INTO staging.load(id, data,
                              flag,
@@ -892,7 +929,7 @@ BEGIN
                                "shelfPrice",
                                COALESCE("brand", '')                     AS "productBrand",
 
-                               'listing'                                 AS status,
+                               lat_product_statuses.status,
 
                                COALESCE("title", '')                     AS "productTitle",
                                COALESCE("imageURL", '')                  AS "productImage",
@@ -934,6 +971,17 @@ BEGIN
                                "isNpd",
                                ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
+                                 LEFT OUTER JOIN staging.products_last
+                                                 ON (products_last."retailerId" = dd_retailer.id AND
+                                                     products_last."sourceId" = tmp_daily_data_pp."sourceId")
+                                 CROSS JOIN LATERAL (SELECT CASE
+                                                                WHEN dd_date <= dd_retailer_last_load_date THEN
+                                                                    'Listed' -- ? Re-loaded. Should take in consideration past records and additionally update also the future records.
+                                                                WHEN products_last.date IS NULL THEN 'Newly'
+                                                                WHEN date - products_last.date = '1 day' THEN 'Listed'
+                                                                ELSE 'Re-listed'
+                                                                END AS status
+                            ) AS lat_product_statuses
 
                         WHERE rownum = 1)
 
@@ -1347,6 +1395,102 @@ BEGIN
     SELECT *
     FROM ins_coreProductBarcodes;
 
+    WITH delisted_ids AS (SELECT products_last."productId" AS id
+                          FROM staging.products_last
+                                   LEFT OUTER JOIN tmp_product_pp USING ("retailerId", "sourceId")
+                          WHERE tmp_product_pp."retailerId" IS NULL
+                            AND products_last.date = dd_date - '2 days'), /* Only select those which just got de-listed.
+                                                                     The expression will select it only once.
+                                                                     This would work if there are loads every day from the  retailer.
+                                                                     Better add the status here and filter by !='De-listed'
+                                                                      */
+         delisted_product AS (SELECT *
+                              FROM products
+                                       INNER JOIN delisted_ids USING (id))
+    INSERT
+    INTO tmp_product_pp ("sourceType",
+                         ean,
+                         promotions,
+                         "promotionDescription",
+                         features,
+                         date,
+                         "sourceId",
+                         "productBrand",
+                         "productTitle",
+                         "productImage",
+                         "secondaryImages",
+                         "productDescription",
+                         "productInfo",
+                         "promotedPrice",
+                         "productInStock",
+                         "productInListing",
+                         "reviewsCount",
+                         "reviewsStars",
+                         "eposId",
+                         multibuy,
+                         "coreProductId",
+                         "retailerId",
+                         "createdAt",
+                         "updatedAt",
+                         "imageId",
+                         size,
+                         "pricePerWeight",
+                         href,
+                         nutritional,
+                         "basePrice",
+                         "shelfPrice",
+                         "productTitleDetail",
+                         "sizeUnit",
+                         "dateId",
+                         marketplace,
+                         "marketplaceData",
+                         "priceMatchDescription",
+                         "priceMatch",
+                         "priceLock",
+                         "isNpd", status)
+    SELECT "sourceType",
+           ean,
+           promotions,
+           "promotionDescription",
+           features,
+           date,
+           "sourceId",
+           "productBrand",
+           "productTitle",
+           "productImage",
+           "secondaryImages",
+           "productDescription",
+           "productInfo",
+           "promotedPrice",
+           "productInStock",
+           "productInListing",
+           "reviewsCount",
+           "reviewsStars",
+           "eposId",
+           multibuy,
+           "coreProductId",
+           "retailerId",
+           "createdAt",
+           "updatedAt",
+           "imageId",
+           size,
+           "pricePerWeight",
+           href,
+           nutritional,
+           "basePrice",
+           "shelfPrice",
+           "productTitleDetail",
+           "sizeUnit",
+           "dateId",
+           marketplace,
+           "marketplaceData",
+           "priceMatchDescription",
+           "priceMatch",
+           "priceLock",
+           "isNpd",
+           'De-listed'
+    FROM delisted_product;
+
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
@@ -1475,10 +1619,12 @@ BEGIN
     INSERT INTO staging.products_last ("retailerId", "sourceId", "productId", date)
     SELECT "retailerId", "sourceId", id AS "productId", date
     FROM tmp_product_pp
+    WHERE status != 'De-listed'
     ON CONFLICT ("sourceId", "retailerId" )
         DO UPDATE
         SET "productId" = excluded."productId",
-            date=excluded.date;
+            date=excluded.date
+    WHERE products_last.date <= excluded.date;
 
     INSERT INTO staging.debug_tmp_product_pp
     SELECT load_retailer_data_pp.load_id, *
@@ -2699,7 +2845,8 @@ TO DO
     ON CONFLICT ("sourceId", "retailerId" )
         DO UPDATE
         SET "productId" = excluded."productId",
-            date=excluded.date;
+            date=excluded.date
+    WHERE products_last.date <= excluded.date;
 
     INSERT INTO staging.debug_tmp_product
     SELECT load_retailer_data_base.load_id, *
