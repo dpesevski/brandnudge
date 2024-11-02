@@ -6,6 +6,18 @@ SELECT *
 FROM staging.products_last
 WHERE "sourceId" = '250411816';
 
+
+SELECT *
+FROM pg_settings
+ORDER BY category, name;
+SET WORK_MEM = '4GB';
+SET max_parallel_workers_per_gather = 4;
+
+SELECT *
+FROM "coreRetailers"
+WHERE id = 651096;
+
+
 ALTER TABLE staging.product_status
     ALTER COLUMN date TYPE date USING date::date;
 
@@ -30,18 +42,13 @@ ALTER TABLE staging.retailer_products
 --WHERE "coreRetailerId" = 651096;
 
 
-SELECT *
-FROM "coreRetailers"
-WHERE id = 651096;
 
-SET WORK_MEM = '16GB';
-SHOW WORK_MEM;
+
+
 CREATE TABLE staging.product_status_history AS
 WITH retailer_products AS (SELECT *,
                                   LAG(date) OVER (PARTITION BY "retailerId",
-                                      "coreProductId" ORDER BY date) AS prev_date,
-                                  ROW_NUMBER() OVER (PARTITION BY "retailerId",
-                                      "coreProductId" ORDER BY date) AS rownum
+                                      "coreProductId" ORDER BY date) AS prev_date
                            FROM staging.retailer_products),
      status_base AS (SELECT *
                      FROM retailer_products
@@ -63,6 +70,4 @@ WITH retailer_products AS (SELECT *,
                         WHERE status = 'Re-listed')
 SELECT *
 FROM product_status
---WHERE "retailerId" = 972
---  AND "coreProductId" = 372493
 ORDER BY date;

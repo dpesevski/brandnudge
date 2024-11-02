@@ -706,31 +706,37 @@ WITH retailer_latest_load AS (SELECT "retailerId", MAX(date) AS date
                               FROM products
                               GROUP BY 1),
      past_product_records AS (SELECT "retailerId",
-                                     "sourceId",
-                                     id                                                                  AS "productId",
+                                     "coreProductId",
+                                     id                                                                AS "productId",
                                      date,
+                                     LAG(date)
+                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "date" DESC) AS prev_date,
                                      ROW_NUMBER()
-                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "dateId" DESC) AS rownum
+                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "date" DESC) AS rownum
                               FROM products),
-     latest AS (SELECT "retailerId", "sourceId", "productId", date
+     latest AS (SELECT "retailerId", "coreProductId", "productId", date, prev_date
                 FROM past_product_records
-                WHERE rownum = 1),
-     prev AS (SELECT "retailerId", "sourceId", "productId", date
-              FROM past_product_records
-              WHERE rownum = 2)
+                WHERE rownum = 1)
 SELECT "retailerId",
-       "sourceId",
+       "coreProductId",
        latest."productId",
-       latest.date,
        CASE
-           WHEN latest.date < retailer_latest_load.date THEN 'De-listead'
-           WHEN prev.date IS NULL THEN 'Newly'
-           WHEN prev.date < latest.date - '1 day'::interval THEN 'Re-Listed'
-           ELSE 'Listed'
-           END AS status
+           WHEN lat.status = 'De-listead' THEN (latest.date + '1 day'::interval)::date
+           ELSE
+               latest.date END AS date,
+       lat.status
 FROM latest
          INNER JOIN retailer_latest_load USING ("retailerId")
-         LEFT OUTER JOIN prev USING ("retailerId", "sourceId");
+         CROSS JOIN LATERAL (SELECT CASE
+                                        WHEN latest.date < retailer_latest_load.date THEN 'De-listead'
+                                        WHEN prev_date IS NULL THEN 'Newly'
+                                        WHEN prev_date < latest.date - '1 day'::interval THEN 'Re-Listed'
+                                        ELSE 'Listed'
+                                        END AS status) AS lat;
+
+ALTER TABLE staging.product_status
+    ADD CONSTRAINT product_status_pk
+        PRIMARY KEY ("retailerId", "coreProductId");
 
 DROP TABLE IF EXISTS staging.products_last;
 CREATE TABLE staging.products_last AS
