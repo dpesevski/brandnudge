@@ -18,33 +18,44 @@ ORDER BY category, name;
 SET WORK_MEM = '4GB';
 SET max_parallel_workers_per_gather = 4;
 
+
+ALTER TABLE staging.retailer_product_load
+    ADD CONSTRAINT ret_prod_pk
+        PRIMARY KEY ("retailerId",
+                     "coreProductId",
+                     load_date);
+
+/*  solution "A", using table public.products */
 CREATE INDEX products_retailerId_coreProductId_date_index
     ON products ("retailerId", "coreProductId", date);
 
-/*  solution "A", using table public.products */
 CREATE TABLE staging.retailer_product_load AS
-WITH load AS (SELECT "retailerId",
-                     "coreProductId",
-                     ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS load_id,
-                     date::date                                                                        AS load_date
-              FROM products)
+WITH retailer_product_load AS (SELECT "retailerId",
+                                      "coreProductId",
+                                      ROW_NUMBER()
+                                      OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS load_id,
+                                      date::date                                                           AS load_date
+                               FROM products)
 SELECT *
-FROM load
+FROM retailer_product_load
 ORDER BY 1, 2, 3;
 
-/*  solution "B", using table public.coreRetailerDates */
+
+/*  solution "b", using table public.coreRetailerDates */
 CREATE TABLE staging.retailer_product_load AS
-WITH load AS (SELECT "retailerId",
-                     "coreProductId",
-                     ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS load_id,
-                     date::date                                                                        AS load_date
-              FROM "coreRetailerDates"
-                       INNER JOIN "coreRetailers"
-                                  ON ("coreRetailers".id = "coreRetailerDates"."coreRetailerId")
-                       INNER JOIN dates ON (dates.id = "coreRetailerDates"."dateId"))
+WITH retailer_product_load AS (SELECT "retailerId",
+                                      "coreProductId",
+                                      ROW_NUMBER()
+                                      OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS load_id,
+                                      date::date                                                           AS load_date
+                               FROM "coreRetailerDates"
+                                        INNER JOIN "coreRetailers"
+                                                   ON ("coreRetailers".id = "coreRetailerDates"."coreRetailerId")
+                                        INNER JOIN dates ON (dates.id = "coreRetailerDates"."dateId"))
 SELECT *
-FROM load
+FROM retailer_product_load
 ORDER BY 1, 2, 3;
+
 
 ALTER TABLE staging.retailer_product_load
     ADD CONSTRAINT ret_prod_pk
@@ -105,3 +116,75 @@ FROM product_status
 ORDER BY "retailerId",
          "coreProductId",
          date;
+
+
+/*  solution "C",  using index in public.products, and lag(date) */
+
+SET WORK_MEM = '4GB';
+SET max_parallel_workers_per_gather = 4;
+
+CREATE INDEX products_retailerId_coreProductId_date_index
+    ON products ("retailerId", "coreProductId", date);
+
+CREATE TABLE staging.product_status_history AS
+WITH retailer_product_load AS (SELECT "retailerId",
+                                      "coreProductId",
+                                      date::date                                                               AS load_date,
+                                      LAG(date) OVER (PARTITION BY "retailerId","coreProductId" ORDER BY date) AS prev_load_date
+                               FROM products)
+SELECT "retailerId",
+       "coreProductId",
+       load_date,
+       CASE
+           WHEN prev_load_date IS NULL THEN 'Newly'
+           WHEN prev_load_date = load_date - '1 day'::interval
+               THEN 'Listed'
+           ELSE 'Re-listed'
+           END AS status
+FROM retailer_product_load
+
+UNION ALL
+
+SELECT "retailerId",
+       "coreProductId",
+       (prev_load_date + '1 day'::interval)::date AS load_date,
+       'De-listed'                                AS status
+FROM retailer_product_load
+WHERE prev_load_date < load_date - '1 day'::interval; --277,448,856 rows affected in 20 m 26 s 587 ms
+
+WITH last_product_load AS (SELECT "retailerId", "coreProductId", MAX(date) AS load_date
+                           FROM products
+                           GROUP BY "retailerId", "coreProductId"),
+
+     last_retailer_load AS (SELECT "retailerId", MAX(date) AS last_load_date
+                            FROM products
+                            GROUP BY "retailerId")
+INSERT
+INTO staging.product_status_history("retailerId", "coreProductId", load_date, status)
+SELECT "retailerId",
+       "coreProductId",
+       (load_date + '1 day'::interval)::date AS load_date,
+       'De-listed'                           AS status
+FROM last_product_load
+         INNER JOIN last_retailer_load USING ("retailerId")
+WHERE load_date < last_load_date; --435,639 rows affected in 14 m 35 s 871 ms
+
+CREATE INDEX product_status_history_index
+    ON staging.product_status_history ("retailerId", "coreProductId", load_date);
+
+ALTER TABLE staging.product_status_history
+    ADD CONSTRAINT product_status_history_pk
+        PRIMARY KEY ("retailerId",
+                     "coreProductId",
+                     load_date); /*  [23505] ERROR: could not create unique index "product_status_history_pk" Detail: Key ("retailerId", "coreProductId", load_date)=(1, 48, 2021-05-08) is duplicated.  */
+
+CREATE TABLE staging.duplicate_product_loads AS
+SELECT "retailerId",
+       "coreProductId",
+       load_date,
+       STRING_AGG(DISTINCT status, ', ') AS status,
+       COUNT(DISTINCT status)            AS cnt_distinct_status,
+       COUNT(*)
+FROM staging.product_status_history
+GROUP BY "retailerId", "coreProductId", load_date
+HAVING COUNT(*) > 1--[2024-11-02 20:44:49] 355,972 rows affected in 23 m 1 s 654 ms
