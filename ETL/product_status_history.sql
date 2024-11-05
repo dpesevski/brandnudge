@@ -126,11 +126,22 @@ SET max_parallel_workers_per_gather = 4;
 CREATE INDEX products_retailerId_coreProductId_date_index
     ON products ("retailerId", "coreProductId", date);
 
+ALTER TABLE staging.product_status_history
+    RENAME TO product_status_history_bck;
+
 CREATE TABLE staging.product_status_history AS
-WITH retailer_product_load AS (SELECT "retailerId",
+WITH products AS (SELECT "retailerId",
+                         "coreProductId",
+                         load_date,
+                         ROW_NUMBER()
+                         OVER (PARTITION BY "retailerId","coreProductId", load_date ORDER BY id DESC) AS rownum
+                  FROM public.products
+                           CROSS JOIN LATERAL (SELECT date::date AS load_date) AS lat),
+     retailer_product_load AS (SELECT "retailerId",
                                       "coreProductId",
-                                      date::date                                                               AS load_date,
-                                      LAG(date) OVER (PARTITION BY "retailerId","coreProductId" ORDER BY date) AS prev_load_date
+                                      load_date,
+                                      LAG(load_date)
+                                      OVER (PARTITION BY "retailerId","coreProductId" ORDER BY load_date) AS prev_load_date
                                FROM products)
 SELECT "retailerId",
        "coreProductId",
@@ -169,7 +180,7 @@ FROM last_product_load
          INNER JOIN last_retailer_load USING ("retailerId")
 WHERE load_date < last_load_date; --435,639 rows affected in 14 m 35 s 871 ms
 
-CREATE INDEX product_status_history_index
+CREATE INDEX product_status_history_2_index
     ON staging.product_status_history ("retailerId", "coreProductId", load_date);
 
 ALTER TABLE staging.product_status_history
@@ -178,7 +189,7 @@ ALTER TABLE staging.product_status_history
                      "coreProductId",
                      load_date); /*  [23505] ERROR: could not create unique index "product_status_history_pk" Detail: Key ("retailerId", "coreProductId", load_date)=(1, 48, 2021-05-08) is duplicated.  */
 
-CREATE TABLE staging.duplicate_product_loads AS
+CREATE TABLE staging.duplicate_product_loads2 AS
 SELECT "retailerId",
        "coreProductId",
        load_date,
