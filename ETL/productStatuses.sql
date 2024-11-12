@@ -158,6 +158,16 @@ GROUP BY 1, 2;
 |Re-listed|false   |4883591  |
 +---------+--------+---------+
 
++---------+--------+---------+
+|status   |?column?|count    |
++---------+--------+---------+
+|De-listed|false   |2357894  |
+|De-listed|true    |3310580  | TO DO:   these need to be inserted in products first
+|Listed   |false   |266615171|
+|Newly    |false   |1086394  |
+|Re-listed|false   |4883591  |
++---------+--------+---------+
+
 */
 
 WITH delisted AS (SELECT "retailerId",
@@ -181,7 +191,7 @@ WHERE rownum = 1
 ON CONFLICT ("retailerId", "coreProductId", date)
     DO UPDATE
     SET "productId"=excluded."productId"
-WHERE product_status_history."productId" IS NULL;--
+WHERE product_status_history."productId" IS NULL;--2,357,894 rows affected in 5 m 21 s 290 ms
 --  AND product_status_history.status = 'De-listed' -- implicitly, only de-listed have productid=null
 
 
