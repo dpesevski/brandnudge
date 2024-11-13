@@ -7,16 +7,16 @@ CREATE INDEX products_retailerId_coreProductId_date_index
 */
 
 CREATE TABLE staging.migstatus_products_filtered AS
-WITH products AS (SELECT products."retailerId",
-                         products."coreProductId",
-                         products.load_date,
+WITH products AS (SELECT "retailerId",
+                         "coreProductId",
+                         load_date,
                          "productId",
                          ROW_NUMBER()
                          OVER (PARTITION BY "retailerId","coreProductId", load_date ORDER BY "productId" DESC) AS rownum
                   FROM (SELECT "retailerId",
                                "coreProductId",
                                date::date,
-                               products.id AS "productId"
+                               id AS "productId"
                         FROM products) AS products
                            LEFT OUTER JOIN (SELECT "productId"
                                             FROM "productStatuses"
@@ -106,8 +106,8 @@ WHERE "productStatuses".id IS NULL
 
 /*  handle records with De-listed status */
 
-/*  TO DO:  a. keep existing "De-listed" records in productStatuses and products.
-            b. create additional "De-listed" records in productStatuses and products.
+/*  TO DO:  a. keep existing "De-listed" records in productStatuses and 
+            b. create additional "De-listed" records in productStatuses and 
                  b.1 extend productStatusses with ("retailerId", "coreProductId", date) and use these to join with product_status_history below instead of "productId"
                  b.2 create records in products for the delisted status records with no productId set. Update back the productId in productStatuses.
 
@@ -119,11 +119,11 @@ WITH status AS (SELECT "productStatuses".*
                          LEFT OUTER JOIN staging.product_status_history USING ("productId")
                 WHERE product_status_history."productId" IS NULL)
 SELECT status.*,
-       products."retailerId",
-       products."coreProductId",
-       products.date::date
+       "retailerId",
+       "coreProductId",
+       date::date
 FROM status
-         INNER JOIN products ON (products.id = status."productId"); -- 2,828,629 rows affected in 6 m 17 s 129 ms
+         INNER JOIN products ON (id = status."productId"); -- 2,828,629 rows affected in 6 m 17 s 129 ms
 
 CREATE UNIQUE INDEX migstatus_productStatuses_additional_productid_uindex
     ON staging."migstatus_productStatuses_additional" ("productId");
@@ -145,29 +145,18 @@ FROM staging."migstatus_productStatuses_additional";
 
 
 /*
-SELECT status, "productId" IS NULL, COUNT(*)
+SELECT status, "productId" IS NULL as delisted, COUNT(*)
 FROM staging.product_status_history
 GROUP BY 1, 2;
 
 +---------+--------+---------+
-|status   |?column?|count    |
+|status   |delisted|count    |
 +---------+--------+---------+
-|De-listed|true    |5321490  |
+|De-listed|true    |  5321490|
 |Listed   |false   |266615171|
-|Newly    |false   |1086394  |
-|Re-listed|false   |4883591  |
+|Newly    |false   |  1086394|
+|Re-listed|false   |  4883591|
 +---------+--------+---------+
-
-+---------+--------+---------+
-|status   |?column?|count    |
-+---------+--------+---------+
-|De-listed|false   |2357894  |
-|De-listed|true    |3310580  | TO DO:   these need to be inserted in products first
-|Listed   |false   |266615171|
-|Newly    |false   |1086394  |
-|Re-listed|false   |4883591  |
-+---------+--------+---------+
-
 */
 
 WITH delisted AS (SELECT "retailerId",
@@ -191,8 +180,103 @@ WHERE rownum = 1
 ON CONFLICT ("retailerId", "coreProductId", date)
     DO UPDATE
     SET "productId"=excluded."productId"
-WHERE product_status_history."productId" IS NULL;--2,357,894 rows affected in 5 m 21 s 290 ms
---  AND product_status_history.status = 'De-listed' -- implicitly, only de-listed have productid=null
+WHERE product_status_history."productId" IS NULL;
+--2,357,894 rows affected in 5 m 21 s 290 ms
+--  AND product_status_history.status = 'De-listed' -- implicitly, only de-listed have null "productId"
+
+/*
+after the update
++---------+--------+---------+
+|status   |delisted|count    |
++---------+--------+---------+
+|De-listed|false   |  2357894| Less than half of the "De-listed" events have been recorded in productStatuses
+|De-listed|true    |  3310580| TO DO:   these need to be inserted in products first
+|Listed   |false   |266615171|
+|Newly    |false   |  1086394|
+|Re-listed|false   |  4883591|
++---------+--------+---------+
+*/
+
+WITH delisted AS (SELECT "retailerId",
+                         "coreProductId",
+                         "date"                                                                  AS delisted_date,
+                         ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId", "date" ) AS rownum
+                  FROM staging.product_status_history
+                  WHERE "productId" IS NULL),
+     last_load_product AS (SELECT delisted."retailerId",
+                                  delisted."coreProductId",
+                                  delisted.delisted_date,
+                                  MAX(product.load_date) AS load_date
+                           FROM delisted
+                                    INNER JOIN staging.migstatus_products_filtered AS product
+                                               ON (product."retailerId" = delisted."retailerId" AND
+                                                   product."coreProductId" = delisted."coreProductId" AND
+                                                   product.load_date < delisted.delisted_date)
+                           GROUP BY delisted."retailerId",
+                                    delisted."coreProductId",
+                                    delisted.delisted_date),
+     ins_prod_selection AS (SELECT "productId" AS id, delisted_date
+                            FROM staging.migstatus_products_filtered
+                                     INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)),
+     ins_products AS (
+         INSERT
+             INTO products ("sourceType", ean, promotions, "promotionDescription", features, date, "sourceId",
+                            "productBrand", "productTitle", "productImage", "secondaryImages", "productDescription",
+                            "productInfo", "promotedPrice", "productInStock", "productInListing", "reviewsCount",
+                            "reviewsStars", "eposId", multibuy, "coreProductId", "retailerId", "createdAt", "updatedAt",
+                            "imageId", size, "pricePerWeight", href, nutritional, "basePrice", "shelfPrice",
+                            "productTitleDetail", "sizeUnit", "dateId", marketplace, "marketplaceData",
+                            "priceMatchDescription", "priceMatch", "priceLock", "isNpd", load_id)
+                 SELECT "sourceType",
+                        ean,
+                        promotions,
+                        "promotionDescription",
+                        features,
+                        delisted_date     AS date,
+                        "sourceId",
+                        "productBrand",
+                        "productTitle",
+                        "productImage",
+                        "secondaryImages",
+                        "productDescription",
+                        "productInfo",
+                        "promotedPrice",
+                        "productInStock",
+                        "productInListing",
+                        "reviewsCount",
+                        "reviewsStars",
+                        "eposId",
+                        multibuy,
+                        "coreProductId",
+                        "retailerId",
+                        CURRENT_TIMESTAMP AS "createdAt",
+                        CURRENT_TIMESTAMP AS "updatedAt",
+                        "imageId",
+                        size,
+                        "pricePerWeight",
+                        href,
+                        nutritional,
+                        "basePrice",
+                        "shelfPrice",
+                        "productTitleDetail",
+                        "sizeUnit",
+                        "dateId",
+                        marketplace,
+                        "marketplaceData",
+                        "priceMatchDescription",
+                        "priceMatch",
+                        "priceLock",
+                        "isNpd",
+                        load_id
+                 FROM products
+                          INNER JOIN ins_prod_selection USING (id)
+                 RETURNING products.*)
+UPDATE staging.product_status_history AS history
+SET "productId"=ins_products.id
+FROM ins_products
+WHERE history."retailerId" = ins_products."retailerId"
+  AND history."coreProductId" = ins_products."coreProductId"
+  AND history.date = ins_products.date;
 
 
 
