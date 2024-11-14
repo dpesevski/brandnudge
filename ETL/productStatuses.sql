@@ -92,26 +92,7 @@ CREATE UNIQUE INDEX product_status_history_productid_uindex
     ON staging.product_status_history ("productId");
 --completed in 2 m 29 s 225 ms
 
-/* Add additional records with statsus !='De-listed' which were missing in the "productStatuses"  */
-INSERT INTO staging."productStatuses" ("productId", status, "createdAt", "updatedAt")
-SELECT product_status_history."productId",
-       product_status_history.status,
-       CURRENT_TIMESTAMP,
-       CURRENT_TIMESTAMP
-FROM staging.product_status_history
-         LEFT OUTER JOIN public."productStatuses" USING ("productId")
-WHERE "productStatuses".id IS NULL
-  AND product_status_history."productId" IS NOT NULL;
 
-
-/*  handle records with De-listed status */
-
-/*  TO DO:  a. keep existing "De-listed" records in productStatuses and 
-            b. create additional "De-listed" records in productStatuses and 
-                 b.1 extend productStatusses with ("retailerId", "coreProductId", date) and use these to join with product_status_history below instead of "productId"
-                 b.2 create records in products for the delisted status records with no productId set. Update back the productId in productStatuses.
-
-*/
 DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
 CREATE TABLE staging."migstatus_productStatuses_additional" AS
 WITH status AS (SELECT "productStatuses".*
@@ -143,6 +124,14 @@ GROUP BY status;
 SELECT *
 FROM staging."migstatus_productStatuses_additional";
 
+/*  handle records with De-listed status */
+
+/*  TO DO:  a. keep existing "De-listed" records in productStatuses and
+            b. create additional "De-listed" records in productStatuses and
+                 b.1 extend productStatusses with ("retailerId", "coreProductId", date) and use these to join with product_status_history below instead of "productId"
+                 b.2 create records in products for the delisted status records with no productId set. Update back the productId in productStatuses.
+
+*/
 
 /*
 SELECT status, "productId" IS NULL as delisted, COUNT(*)
@@ -196,7 +185,7 @@ after the update
 |Re-listed|false   |  4883591|
 +---------+--------+---------+
 */
-
+CREATE TABLE staging.migstatus_ins_products AS
 WITH delisted AS (SELECT "retailerId",
                          "coreProductId",
                          "date"                                                                  AS delisted_date,
@@ -220,65 +209,63 @@ WITH delisted AS (SELECT "retailerId",
                                    dates.id    AS delisted_date_id
                             FROM staging.migstatus_products_filtered
                                      INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)
-                                     LEFT OUTER JOIN dates ON (dates."date" = delisted_date)),
-     ins_products AS (
-         INSERT
-             INTO products ("sourceType", ean, promotions, "promotionDescription", features, date, "sourceId",
-                            "productBrand", "productTitle", "productImage", "secondaryImages", "productDescription",
-                            "productInfo", "promotedPrice", "productInStock", "productInListing", "reviewsCount",
-                            "reviewsStars", "eposId", multibuy, "coreProductId", "retailerId", "createdAt", "updatedAt",
-                            "imageId", size, "pricePerWeight", href, nutritional, "basePrice", "shelfPrice",
-                            "productTitleDetail", "sizeUnit", "dateId", marketplace, "marketplaceData",
-                            "priceMatchDescription", "priceMatch", "priceLock", "isNpd", load_id)
-                 SELECT "sourceType",
-                        ean,
-                        promotions,
-                        "promotionDescription",
-                        features,
-                        delisted_date     AS date,
-                        "sourceId",
-                        "productBrand",
-                        "productTitle",
-                        "productImage",
-                        "secondaryImages",
-                        "productDescription",
-                        "productInfo",
-                        "promotedPrice",
-                        "productInStock",
-                        "productInListing",
-                        "reviewsCount",
-                        "reviewsStars",
-                        "eposId",
-                        multibuy,
-                        "coreProductId",
-                        "retailerId",
+                                     LEFT OUTER JOIN dates ON (dates."date" = delisted_date))
+SELECT NEXTVAL('products_id_seq'::regclass) AS id,
+       "sourceType",
+       ean,
+       promotions,
+       "promotionDescription",
+       features,
+       delisted_date                        AS date,
+       "sourceId",
+       "productBrand",
+       "productTitle",
+       "productImage",
+       "secondaryImages",
+       "productDescription",
+       "productInfo",
+       "promotedPrice",
+       "productInStock",
+       "productInListing",
+       "reviewsCount",
+       "reviewsStars",
+       "eposId",
+       multibuy,
+       "coreProductId",
+       "retailerId",
 --                        CURRENT_TIMESTAMP AS "createdAt",
 --                        CURRENT_TIMESTAMP AS "updatedAt",
-                        '2000-01-01' AS "createdAt",
-                        '2000-01-01' AS "updatedAt",
-                        "imageId",
-                        size,
-                        "pricePerWeight",
-                        href,
-                        nutritional,
-                        "basePrice",
-                        "shelfPrice",
-                        "productTitleDetail",
-                        "sizeUnit",
-                        delisted_date_id  AS "dateId",
-                        marketplace,
-                        "marketplaceData",
-                        "priceMatchDescription",
-                        "priceMatch",
-                        "priceLock",
-                        "isNpd",
-                        load_id
-                 FROM products
-                          INNER JOIN ins_prod_selection USING (id)
-                 RETURNING products.*)
+       '2000-01-01'::timestamptz            AS "createdAt",
+       '2000-01-01'::timestamptz            AS "updatedAt",
+       "imageId",
+       size,
+       "pricePerWeight",
+       href,
+       nutritional,
+       "basePrice",
+       "shelfPrice",
+       "productTitleDetail",
+       "sizeUnit",
+       delisted_date_id                     AS "dateId",
+       marketplace,
+       "marketplaceData",
+       "priceMatchDescription",
+       "priceMatch",
+       "priceLock",
+       "isNpd",
+       load_id
+FROM products
+         INNER JOIN ins_prod_selection USING (id); -- 3,310,580 rows affected in 27 m 3 s 761 ms
+
+
+INSERT
+INTO products
+SELECT*
+FROM staging.migstatus_ins_products; --3,310,580 rows affected in 31 m 23 s 196 ms
+
 UPDATE staging.product_status_history AS history
 SET "productId"=ins_products.id
-FROM ins_products
+FROM staging.migstatus_ins_products AS ins_products
 WHERE history."retailerId" = ins_products."retailerId"
   AND history."coreProductId" = ins_products."coreProductId"
   AND history.date = ins_products.date;
@@ -289,17 +276,32 @@ WHERE history."retailerId" = ins_products."retailerId"
 [2024-11-14 18:49:00] [23505] ERROR: duplicate key value violates unique constraint "products_sourceid_retailerid_dateid_key"
 [2024-11-14 18:49:00] Detail: Key ("sourceId", "retailerId", "dateId")=(7428221, 3, 162) already exists.
 */
-
+DROP TABLE IF EXISTS staging."productStatuses";
 CREATE TABLE staging."productStatuses" AS
-SELECT "productStatuses".id,
+SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regclass)) AS id,
        "productId",
        product_status_history.status,
        "productStatuses".screenshot,
-       "productStatuses"."createdAt",
-       "productStatuses"."updatedAt",
+       COALESCE("productStatuses"."createdAt", CURRENT_TIMESTAMP)                    AS "createdAt",
+       COALESCE("productStatuses"."updatedAt", CURRENT_TIMESTAMP)                    AS "updatedAt",
        "productStatuses".load_id
 FROM staging.product_status_history
-         INNER JOIN public."productStatuses" USING ("productId");--271,828,761 rows affected in 21 m 46 s 957 ms
+         LEFT OUTER JOIN public."productStatuses" USING ("productId");--278,253,630 rows affected in 22 m 39 s 456 ms
+
+/*
+/* Add additional records with statsus !='De-listed' which were missing in the "productStatuses"  */
+INSERT INTO staging."productStatuses" ("productId", status, "createdAt", "updatedAt")
+SELECT product_status_history."productId",
+       product_status_history.status,
+       CURRENT_TIMESTAMP,
+       CURRENT_TIMESTAMP
+FROM staging.product_status_history
+         LEFT OUTER JOIN public."productStatuses" USING ("productId")
+WHERE "productStatuses".id IS NULL
+  AND product_status_history."productId" IS NOT NULL;
+*/
+
+
 
 ALTER TABLE "productStatuses"
     ALTER COLUMN id DROP DEFAULT;
@@ -309,8 +311,7 @@ ALTER TABLE staging."productStatuses"
 
 
 
-ALTER TABLE public."productStatuses"
-    RENAME TO "productStatuses-bck";
+ALTER TABLE public."productStatuses" RENAME TO "productStatuses-bck";
 ALTER INDEX "productStatuses_pkey" RENAME TO "productStatuses-bck_pkey";
 ALTER INDEX "productstatuses_productid_uindex" RENAME TO "productstatuses-bck_productid_uindex";
 
@@ -326,18 +327,18 @@ CREATE UNIQUE INDEX productstatuses_productid_uindex
 
 /*  [23505] ERROR: could not create unique index "product_status_history_pk" Detail: Key ("retailerId", "coreProductId", load_date)=(1, 48, 2021-05-08) is duplicated.  */
 
-
+DROP TABLE IF EXISTS staging.PRODUCT_STATUS;
 CREATE TABLE staging.PRODUCT_STATUS AS
 WITH PRODUCT_STATUS AS (SELECT *,
                                ROW_NUMBER()
-                               OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY load_date DESC) AS rownum
+                               OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
                         FROM staging.product_status_history)
 SELECT "retailerId",
        "coreProductId",
-       load_date,
+       date,
        status
 FROM PRODUCT_STATUS
-WHERE rownum = 1;
+WHERE rownum = 1;--1,086,396 rows affected in 6 m 26 s 543 ms
 
 ALTER TABLE staging.PRODUCT_STATUS
     ADD CONSTRAINT PRODUCT_STATUS_pk
