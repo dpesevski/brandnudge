@@ -215,9 +215,12 @@ WITH delisted AS (SELECT "retailerId",
                            GROUP BY delisted."retailerId",
                                     delisted."coreProductId",
                                     delisted.delisted_date),
-     ins_prod_selection AS (SELECT "productId" AS id, delisted_date
+     ins_prod_selection AS (SELECT "productId" AS id,
+                                   delisted_date,
+                                   dates.id    AS delisted_date_id
                             FROM staging.migstatus_products_filtered
-                                     INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)),
+                                     INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)
+                                     LEFT OUTER JOIN dates ON (dates."date" = delisted_date)),
      ins_products AS (
          INSERT
              INTO products ("sourceType", ean, promotions, "promotionDescription", features, date, "sourceId",
@@ -249,8 +252,10 @@ WITH delisted AS (SELECT "retailerId",
                         multibuy,
                         "coreProductId",
                         "retailerId",
-                        CURRENT_TIMESTAMP AS "createdAt",
-                        CURRENT_TIMESTAMP AS "updatedAt",
+--                        CURRENT_TIMESTAMP AS "createdAt",
+--                        CURRENT_TIMESTAMP AS "updatedAt",
+                        '2000-01-01' AS "createdAt",
+                        '2000-01-01' AS "updatedAt",
                         "imageId",
                         size,
                         "pricePerWeight",
@@ -260,7 +265,7 @@ WITH delisted AS (SELECT "retailerId",
                         "shelfPrice",
                         "productTitleDetail",
                         "sizeUnit",
-                        "dateId",
+                        delisted_date_id  AS "dateId",
                         marketplace,
                         "marketplaceData",
                         "priceMatchDescription",
@@ -278,7 +283,12 @@ WHERE history."retailerId" = ins_products."retailerId"
   AND history."coreProductId" = ins_products."coreProductId"
   AND history.date = ins_products.date;
 
-
+/*
+3 minutes
+============================
+[2024-11-14 18:49:00] [23505] ERROR: duplicate key value violates unique constraint "products_sourceid_retailerid_dateid_key"
+[2024-11-14 18:49:00] Detail: Key ("sourceId", "retailerId", "dateId")=(7428221, 3, 162) already exists.
+*/
 
 CREATE TABLE staging."productStatuses" AS
 SELECT "productStatuses".id,
