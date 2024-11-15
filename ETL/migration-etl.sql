@@ -700,62 +700,6 @@ CREATE TABLE staging.debug_retailers
     LIKE "retailers"
 );
 
-DROP TABLE IF EXISTS staging.product_status;
-CREATE TABLE staging.product_status AS
-WITH retailer_latest_load AS (SELECT "retailerId", MAX(date) AS date
-                              FROM products
-                              GROUP BY 1),
-     past_product_records AS (SELECT "retailerId",
-                                     "coreProductId",
-                                     id                                                                AS "productId",
-                                     date,
-                                     LAG(date)
-                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "date" DESC) AS prev_date,
-                                     ROW_NUMBER()
-                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "date" DESC) AS rownum
-                              FROM products),
-     latest AS (SELECT "retailerId", "coreProductId", "productId", date, prev_date
-                FROM past_product_records
-                WHERE rownum = 1)
-SELECT "retailerId",
-       "coreProductId",
-       latest."productId",
-       CASE
-           WHEN lat.status = 'De-listead' THEN (latest.date + '1 day'::interval)::date
-           ELSE
-               latest.date END AS date,
-       lat.status
-FROM latest
-         INNER JOIN retailer_latest_load USING ("retailerId")
-         CROSS JOIN LATERAL (SELECT CASE
-                                        WHEN latest.date < retailer_latest_load.date THEN 'De-listead'
-                                        WHEN prev_date IS NULL THEN 'Newly'
-                                        WHEN prev_date < latest.date - '1 day'::interval THEN 'Re-Listed'
-                                        ELSE 'Listed'
-                                        END AS status) AS lat;
-
-ALTER TABLE staging.product_status
-    ADD CONSTRAINT product_status_pk
-        PRIMARY KEY ("retailerId", "coreProductId");
-
-DROP TABLE IF EXISTS staging.products_last;
-CREATE TABLE staging.products_last AS
-WITH past_product_records AS (SELECT "retailerId",
-                                     "sourceId",
-                                     id                                                                  AS "productId",
-                                     date,
-                                     ROW_NUMBER()
-                                     OVER (PARTITION BY "retailerId", "sourceId" ORDER BY "dateId" DESC) AS rownum
-                              FROM products)
-SELECT "retailerId", "sourceId", "productId", date
-FROM past_product_records
-WHERE rownum = 1;
-
-
-ALTER TABLE staging.products_last
-    ADD CONSTRAINT products_last_pk
-        PRIMARY KEY ("retailerId", "sourceId");
-
 DROP FUNCTION IF EXISTS staging.load_retailer_data(json, text);
 CREATE OR REPLACE FUNCTION staging.load_retailer_data(fetched_data json, flag text DEFAULT NULL::text) RETURNS integer
     LANGUAGE plpgsql
@@ -1035,7 +979,7 @@ BEGIN
            dd_products."bundled",
            dd_products."originalPrice",
            dd_products."productPrice",
-           NULL::text                                                          AS status,
+           'Newly'                                                             AS status,
            dd_products."productOptions",
 
            dd_products.shop,
@@ -1398,25 +1342,19 @@ BEGIN
     SELECT *
     FROM ins_coreProductBarcodes;
 
+    UPDATE tmp_product_pp
+    SET status=CASE
+                   WHEN dd_date - last_product_status.date = '1 day' THEN 'Listed'
+                   ELSE 'Re-listed'
+        END
+    FROM last_product_status
+    WHERE last_product_status."coreProductId" = tmp_product_pp."coreProductId";
 
-    SELECT CASE
-                    WHEN last_product_status.date IS NULL THEN 'Newly'
-               WHEN DATE - last_product_status.date = '1 day' THEN 'Listed'
-               ELSE 'Re-listed'
-               END AS status
-    FROM tmp_product_pp
-             LEFT OUTER JOIN last_product_status USING ("coreProductId");
-
-
-    WITH delisted_ids AS (SELECT products_last."productId" AS id
-                          FROM staging.products_last
-                                   LEFT OUTER JOIN tmp_product_pp USING ("retailerId", "sourceId")
-                          WHERE tmp_product_pp."retailerId" IS NULL
-                            AND products_last.date = dd_date - '2 days'), /* Only select those which just got de-listed.
-                                                                     The expression will select it only once.
-                                                                     This would work if there are loads every day from the  retailer.
-                                                                     Better add the status here and filter by !='De-listed'
-                                                                      */
+    WITH delisted_ids AS (SELECT last_product_status."productId" AS id
+                          FROM last_product_status
+                                   LEFT OUTER JOIN tmp_product_pp USING ("coreProductId")
+                          WHERE tmp_product_pp."coreProductId" IS NULL
+                            AND last_product_status.status != 'De-listed'),
          delisted_product AS (SELECT *
                               FROM products
                                        INNER JOIN delisted_ids USING (id))
@@ -1460,13 +1398,14 @@ BEGIN
                          "priceMatchDescription",
                          "priceMatch",
                          "priceLock",
-                         "isNpd", status)
+                         "isNpd", load_id,
+                         status)
     SELECT "sourceType",
            ean,
            promotions,
            "promotionDescription",
            features,
-           date,
+           dd_date     AS "date",
            "sourceId",
            "productBrand",
            "productTitle",
@@ -1494,14 +1433,15 @@ BEGIN
            "shelfPrice",
            "productTitleDetail",
            "sizeUnit",
-           "dateId",
+           dd_date_id  AS "dateId",
            marketplace,
            "marketplaceData",
            "priceMatchDescription",
            "priceMatch",
            "priceLock",
            "isNpd",
-           'De-listed'
+           NULL        AS load_id,
+           'De-listed' AS status
     FROM delisted_product;
 
     /*  createProductBy    */
@@ -1629,15 +1569,12 @@ BEGIN
       AND tmp_product_pp."dateId" = ins_products."dateId";
 
 
-    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId", date)
-    SELECT "retailerId", "sourceId", id AS "productId", date
+    INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+    SELECT "retailerId", "coreProductId", date, id AS "productId", status
     FROM tmp_product_pp
-    WHERE status != 'De-listed'
-    ON CONFLICT ("sourceId", "retailerId" )
+    ON CONFLICT ("retailerId", "coreProductId", date)
         DO UPDATE
-        SET "productId" = excluded."productId",
-            date=excluded.date
-    WHERE products_last.date <= excluded.date;
+        SET status=excluded.status;
 
     INSERT INTO staging.debug_tmp_product_pp
     SELECT load_retailer_data_pp.load_id, *
@@ -1874,6 +1811,20 @@ BEGIN
     END IF;
 
     dd_date := value #> '{products,0,date}';
+
+    CREATE TEMPORARY TABLE last_product_status ON COMMIT DROP AS
+    WITH product_status AS (SELECT *,
+                                   ROW_NUMBER()
+                                   OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
+                            FROM staging.product_status_history
+                            WHERE "retailerId" = dd_retailer.id
+                              AND date < dd_date)
+    SELECT "coreProductId", date, status, "productId"
+    FROM product_status
+    WHERE rownum = 1;
+
+    SELECT MAX(date) AS dd_retailer_last_load_date
+    FROM last_product_status;
 
     DROP TABLE IF EXISTS tmp_daily_data;
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
@@ -2147,17 +2098,12 @@ TO DO
            sell,
            "fulfilParty",
            "amazonFulfilParty",
-           status,
+           'Newly' AS status,
            screenshot,
            ranking.ranking_data
     FROM daily_data
              INNER JOIN ranking USING ("sourceId")
     WHERE rownum = 1;
-
-    UPDATE tmp_product
-    SET status='re-listed'
-    WHERE status = 'newly'
-      AND NOT EXISTS (SELECT * FROM products WHERE "sourceId" = tmp_product."sourceId");
 
     /*  prepare products' promotions data   */
     /*  promotions - multibuy price calc  (not as in the order in createProducts) */
@@ -2479,6 +2425,148 @@ TO DO
     SELECT *
     FROM ins_coreProductBarcodes;
 
+
+    UPDATE tmp_product
+    SET status=CASE
+                   WHEN dd_date - last_product_status.date = '1 day' THEN 'Listed'
+                   ELSE 'Re-listed'
+        END
+    FROM last_product_status
+    WHERE last_product_status."coreProductId" = tmp_product."coreProductId";
+
+    WITH delisted_ids AS (SELECT last_product_status."productId" AS id
+                          FROM last_product_status
+                                   LEFT OUTER JOIN tmp_product USING ("coreProductId")
+                          WHERE tmp_product."coreProductId" IS NULL
+                            AND last_product_status.status != 'De-listed'),
+         delisted_product AS (SELECT *
+                              FROM products
+                                       INNER JOIN delisted_ids USING (id))
+    INSERT
+    INTO tmp_product (id,
+                      "coreProductId",
+                      promotions,
+        --"productPrice",
+        --"originalPrice",
+                      "basePrice",
+                      "shelfPrice",
+                      "promotedPrice",
+                      "retailerId",
+                      "dateId",
+        --featured,
+        --bundled,--
+                      date,
+                      ean,
+                      "eposId",
+                      features,
+                      href,
+        --"inTaxonomy",
+        --"isFeatured",
+                      multibuy,
+                      nutritional,
+                      "pricePerWeight",
+                      "productBrand",
+                      "productDescription",
+                      "productImage",
+        --"newCoreImage",
+                      "productInStock",
+                      "productInfo",
+                      "productTitle",
+                      "productTitleDetail",
+                      "reviewsCount",
+                      "reviewsStars",
+                      "secondaryImages",
+                      size,
+                      "sizeUnit",
+                      "sourceId",
+                      "sourceType",
+        --"brandId",--
+        --"productOptions",--
+        --"eanIssues",--
+        --shop,--
+        --"amazonShop",--
+        --choice,--
+        --"amazonChoice",--
+        --"lowStock",--
+        --"sellParty",--
+        --"amazonSellParty",--
+        --"amazonSell",--
+                      marketplace,
+                      "marketplaceData",
+                      "priceMatchDescription",
+                      "priceMatch",
+                      "priceLock",
+                      "isNpd",
+        --sell,--
+        --"fulfilParty",--
+        --"amazonFulfilParty",--
+        --screenshot,--
+        --ranking_data,--
+                      load_id,
+                      status)
+    SELECT id,
+           "coreProductId",
+           promotions,
+           --"productPrice",
+           --"originalPrice",
+           "basePrice",
+           "shelfPrice",
+           "promotedPrice",
+           "retailerId",
+           dd_date_id     "dateId",
+           --featured,
+           --bundled,--
+           dd_date     AS date,
+           ean,
+           "eposId",
+           features,
+           href,
+           --"inTaxonomy",
+           --"isFeatured",
+           multibuy,
+           nutritional,
+           "pricePerWeight",
+           "productBrand",
+           "productDescription",
+           "productImage",
+           --"newCoreImage",
+           "productInStock",
+           "productInfo",
+           "productTitle",
+           "productTitleDetail",
+           "reviewsCount",
+           "reviewsStars",
+           "secondaryImages",
+           size,
+           "sizeUnit",
+           "sourceId",
+           "sourceType",
+           --"brandId",--
+           --"productOptions",--
+           --"eanIssues",--
+           --shop,--
+           --"amazonShop",--
+           --choice,--
+           --"amazonChoice",--
+           --"lowStock",--
+           --"sellParty",--
+           --"amazonSellParty",--
+           --"amazonSell",--
+           marketplace,
+           "marketplaceData",
+           "priceMatchDescription",
+           "priceMatch",
+           "priceLock",
+           "isNpd",
+           --sell,--
+           --"fulfilParty",--
+           --"amazonFulfilParty",--
+           --screenshot,--
+           --ranking_data,--
+           NULL        AS load_id,
+           'De-listed' AS status
+    FROM delisted_product;
+
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
@@ -2738,28 +2826,6 @@ TO DO
     FROM debug_coreRetailerTaxonomies;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    /*  saveProductStatus   */
-    WITH debug_productStatuses AS (INSERT INTO "productStatuses" ("productId",
-                                                                  status,
-                                                                  screenshot,
-                                                                  "createdAt",
-                                                                  "updatedAt", load_id)
-        SELECT id AS "productId",
-               status,
-               screenshot,
-               NOW(),
-               NOW(),
-               load_retailer_data_base.load_id
-        FROM tmp_product
-        ON CONFLICT ("productId")
-            DO NOTHING
-        RETURNING "productStatuses".*)
-    INSERT
-    INTO staging.debug_productStatuses
-    SELECT *
-    FROM debug_productStatuses;
-    --  UPDATE SET "updatedAt" = excluded."updatedAt";
-
     /*  PromotionService.processProductPromotions, part 2 insert promotions  */
     WITH debug_ins_promotions AS (
         INSERT INTO promotions ("retailerPromotionId",
@@ -2852,14 +2918,34 @@ TO DO
     FROM debug_ins_coreRetailerDates;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    INSERT INTO staging.products_last ("retailerId", "sourceId", "productId", date)
-    SELECT "retailerId", "sourceId", id AS "productId", date
+    INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+    SELECT "retailerId", "coreProductId", date, id AS "productId", status
     FROM tmp_product
-    ON CONFLICT ("sourceId", "retailerId" )
+    ON CONFLICT ("retailerId", "coreProductId", date)
         DO UPDATE
-        SET "productId" = excluded."productId",
-            date=excluded.date
-    WHERE products_last.date <= excluded.date;
+        SET status=excluded.status;
+
+    /*  saveProductStatus   */
+    WITH debug_productStatuses AS (INSERT INTO "productStatuses" ("productId",
+                                                                  status,
+                                                                  screenshot,
+                                                                  "createdAt",
+                                                                  "updatedAt", load_id)
+        SELECT id AS "productId",
+               status,
+               screenshot,
+               NOW(),
+               NOW(),
+               load_retailer_data_base.load_id
+        FROM tmp_product
+        ON CONFLICT ("productId")
+            DO NOTHING
+        RETURNING "productStatuses".*)
+    INSERT
+    INTO staging.debug_productStatuses
+    SELECT *
+    FROM debug_productStatuses;
+    --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     INSERT INTO staging.debug_tmp_product
     SELECT load_retailer_data_base.load_id, *
