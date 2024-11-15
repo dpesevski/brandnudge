@@ -845,9 +845,19 @@ BEGIN
     RETURNING id
         INTO dd_date_id;
 
+    CREATE TEMPORARY TABLE last_product_status ON COMMIT DROP AS
+    WITH product_status AS (SELECT *,
+                                   ROW_NUMBER()
+                                   OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
+                            FROM staging.product_status_history
+                            WHERE "retailerId" = dd_retailer.id
+                              AND date < dd_date)
+    SELECT "coreProductId", date, status, "productId"
+    FROM product_status
+    WHERE rownum = 1;
+
     SELECT MAX(date) AS dd_retailer_last_load_date
-    FROM staging.products_last
-    WHERE "retailerId" = dd_retailer.id;
+    FROM last_product_status;
 
     INSERT INTO staging.load(id, data,
                              flag,
@@ -935,7 +945,6 @@ BEGIN
                                "shelfPrice",
                                COALESCE("brand", '')                     AS "productBrand",
 
-                               lat_product_statuses.status,
 
                                COALESCE("title", '')                     AS "productTitle",
                                COALESCE("imageURL", '')                  AS "productImage",
@@ -977,18 +986,6 @@ BEGIN
                                "isNpd",
                                ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
-                                 LEFT OUTER JOIN staging.products_last
-                                                 ON (products_last."retailerId" = dd_retailer.id AND
-                                                     products_last."sourceId" = tmp_daily_data_pp."sourceId")
-                                 CROSS JOIN LATERAL (SELECT CASE
-                                                                WHEN dd_date <= dd_retailer_last_load_date THEN
-                                                                    'Listed' -- ? Re-loaded. Should take in consideration past records and additionally update also the future records.
-                                                                WHEN products_last.date IS NULL THEN 'Newly'
-                                                                WHEN date - products_last.date = '1 day' THEN 'Listed'
-                                                                ELSE 'Re-listed'
-                                                                END AS status
-                            ) AS lat_product_statuses
-
                         WHERE rownum = 1)
 
     SELECT NULL::integer                                                       AS id,
@@ -1038,7 +1035,7 @@ BEGIN
            dd_products."bundled",
            dd_products."originalPrice",
            dd_products."productPrice",
-           dd_products.status,
+           NULL::text                                                          AS status,
            dd_products."productOptions",
 
            dd_products.shop,
@@ -1400,6 +1397,16 @@ BEGIN
     INTO staging.debug_coreProductBarcodes
     SELECT *
     FROM ins_coreProductBarcodes;
+
+
+    SELECT CASE
+                    WHEN last_product_status.date IS NULL THEN 'Newly'
+               WHEN DATE - last_product_status.date = '1 day' THEN 'Listed'
+               ELSE 'Re-listed'
+               END AS status
+    FROM tmp_product_pp
+             LEFT OUTER JOIN last_product_status USING ("coreProductId");
+
 
     WITH delisted_ids AS (SELECT products_last."productId" AS id
                           FROM staging.products_last

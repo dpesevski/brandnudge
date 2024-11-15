@@ -116,14 +116,6 @@ CREATE INDEX migstatus_productStatuses_additional_productid_addindex
 CREATE INDEX migstatus_productStatuses_additional_productid_statusindex
     ON staging."migstatus_productStatuses_additional" (status);
 
-
-SELECT status, COUNT(*)
-FROM staging."migstatus_productStatuses_additional"
-GROUP BY status;
-
-SELECT *
-FROM staging."migstatus_productStatuses_additional";
-
 /*  handle records with De-listed status */
 
 /*  TO DO:  a. keep existing "De-listed" records in productStatuses and
@@ -147,7 +139,11 @@ GROUP BY 1, 2;
 |Re-listed|false   |  4883591|
 +---------+--------+---------+
 */
-
+/*`TO DO: maybe only update without insert?
+  All records in productStatsuses with status "Delisted" are relating to en existing record in products, made only for the purpose to record status "Delisted"
+  Some of these product records may have been created wrongly, and should be removed.
+  Till then, we can keep these records both in productStatsuses and products.
+  */
 WITH delisted AS (SELECT "retailerId",
                          "coreProductId",
                          date,
@@ -302,14 +298,11 @@ WHERE "productStatuses".id IS NULL
 */
 
 
-
 ALTER TABLE "productStatuses"
     ALTER COLUMN id DROP DEFAULT;
 
 ALTER TABLE staging."productStatuses"
     ALTER COLUMN id SET DEFAULT NEXTVAL('"productStatuses_id_seq"'::regclass);
-
-
 
 ALTER TABLE public."productStatuses" RENAME TO "productStatuses-bck";
 ALTER INDEX "productStatuses_pkey" RENAME TO "productStatuses-bck_pkey";
@@ -324,8 +317,6 @@ CREATE UNIQUE INDEX "productStatuses_pkey"
 CREATE UNIQUE INDEX productstatuses_productid_uindex
     ON public."productStatuses" ("productId");
 
-
-/*  [23505] ERROR: could not create unique index "product_status_history_pk" Detail: Key ("retailerId", "coreProductId", load_date)=(1, 48, 2021-05-08) is duplicated.  */
 
 DROP TABLE IF EXISTS staging.PRODUCT_STATUS;
 CREATE TABLE staging.PRODUCT_STATUS AS
