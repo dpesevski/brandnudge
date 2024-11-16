@@ -1,10 +1,10 @@
 /*
 SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
+*/
 
 CREATE INDEX products_retailerId_coreProductId_date_index
-    ON products ("retailerId", "coreProductId", date);
-*/
+    ON products ("retailerId", "coreProductId", date); --[2024-11-16 14:44:02] completed in 10 m 52 s 449 ms
 
 CREATE TABLE staging.migstatus_products_filtered AS
 WITH products AS (SELECT "retailerId",
@@ -29,10 +29,10 @@ SELECT "retailerId",
        "productId"
 FROM products
 WHERE rownum = 1
-ORDER BY "retailerId", "coreProductId", load_date; --272,585,156 rows affected in 31 m 38 s 734 ms
+ORDER BY "retailerId", "coreProductId", load_date; --282,823,990 rows affected in 36 m 44 s 565 ms
 
 CREATE INDEX migstatus_products_filtered_retailerId_coreProductId_date_index
-    ON staging.migstatus_products_filtered ("retailerId", "coreProductId", load_date);
+    ON staging.migstatus_products_filtered ("retailerId", "coreProductId", load_date); --completed in 4 m 42 s 756 ms
 
 CREATE TABLE staging.product_status_history AS
 WITH retailer_product_load AS (SELECT "retailerId",
@@ -62,7 +62,7 @@ SELECT "retailerId",
        NULL                                       AS "productId",
        'De-listed'                                AS status
 FROM retailer_product_load
-WHERE prev_load_date < load_date - '1 day'::interval; -- 277,468,747 rows affected in 40 m 33 s 675 ms
+WHERE prev_load_date < load_date - '1 day'::interval; -- 287,123,639 rows affected in 44 m 32 s 925 ms
 
 WITH last_product_load AS (SELECT "retailerId", "coreProductId", MAX(load_date) AS load_date
                            FROM staging.migstatus_products_filtered
@@ -80,20 +80,20 @@ SELECT "retailerId",
        'De-listed'                           AS status
 FROM last_product_load
          INNER JOIN last_retailer_load USING ("retailerId")
-WHERE load_date < last_load_date; -- 437,899 rows affected in 1 m 34 s 410 ms
+WHERE load_date < last_load_date; -- 495,353 rows affected in 1 m 41 s 352 ms
 
 ALTER TABLE staging.product_status_history
     ADD CONSTRAINT product_status_history_pk
         PRIMARY KEY ("retailerId",
                      "coreProductId",
-                     date); -- completed in 3 m 39 s 842 ms
+                     date); -- completed in 5 m 38 s 907 ms
 
 CREATE UNIQUE INDEX product_status_history_productid_uindex
-    ON staging.product_status_history ("productId");
---completed in 2 m 29 s 225 ms
+    ON staging.product_status_history ("productId"); --completed in 3 m 19 s 17 ms
 
 
-DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
+DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional"; -- [2024-11-16 13:01:45] completed in 61 ms
+
 CREATE TABLE staging."migstatus_productStatuses_additional" AS
 WITH status AS (SELECT "productStatuses".*
                 FROM "productStatuses"
@@ -104,7 +104,7 @@ SELECT status.*,
        "coreProductId",
        date::date
 FROM status
-         INNER JOIN products ON (id = status."productId"); -- 2,828,629 rows affected in 6 m 17 s 129 ms
+         INNER JOIN products ON (products.id = status."productId"); -- 2,828,629 rows affected in 6 m 17 s 129 ms
 
 CREATE UNIQUE INDEX migstatus_productStatuses_additional_productid_uindex
     ON staging."migstatus_productStatuses_additional" ("productId");
