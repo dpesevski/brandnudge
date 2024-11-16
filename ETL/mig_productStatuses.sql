@@ -15,8 +15,8 @@ WITH products AS (SELECT "retailerId",
                          OVER (PARTITION BY "retailerId","coreProductId", load_date ORDER BY "productId" DESC) AS rownum
                   FROM (SELECT "retailerId",
                                "coreProductId",
-                               date::date,
-                               id AS "productId"
+                               date::date AS load_date,
+                               id         AS "productId"
                         FROM products) AS products
                            LEFT OUTER JOIN (SELECT "productId"
                                             FROM "productStatuses"
@@ -249,7 +249,7 @@ SELECT NEXTVAL('products_id_seq'::regclass) AS id,
        "priceMatch",
        "priceLock",
        "isNpd",
-       load_id
+       NULL                                 AS load_id
 FROM products
          INNER JOIN ins_prod_selection USING (id); -- 3,310,580 rows affected in 27 m 3 s 761 ms
 
@@ -282,7 +282,8 @@ SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regcla
        COALESCE("productStatuses"."updatedAt", CURRENT_TIMESTAMP)                    AS "updatedAt",
        "productStatuses".load_id
 FROM staging.product_status_history
-         LEFT OUTER JOIN public."productStatuses" USING ("productId");--278,253,630 rows affected in 22 m 39 s 456 ms
+         LEFT OUTER JOIN public."productStatuses" USING ("productId");
+--278,253,630 rows affected in 22 m 39 s 456 ms
 
 /*
 /* Add additional records with statsus !='De-listed' which were missing in the "productStatuses"  */
@@ -304,7 +305,8 @@ ALTER TABLE "productStatuses"
 ALTER TABLE staging."productStatuses"
     ALTER COLUMN id SET DEFAULT NEXTVAL('"productStatuses_id_seq"'::regclass);
 
-ALTER TABLE public."productStatuses" RENAME TO "productStatuses-bck";
+ALTER TABLE public."productStatuses"
+    RENAME TO "productStatuses-bck";
 ALTER INDEX "productStatuses_pkey" RENAME TO "productStatuses-bck_pkey";
 ALTER INDEX "productstatuses_productid_uindex" RENAME TO "productstatuses-bck_productid_uindex";
 
