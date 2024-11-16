@@ -381,7 +381,10 @@ CREATE TYPE staging.retailer_data_pp AS
     "priceMatchDescription" text,
     "priceMatch"            boolean,
     "priceLock"             boolean,
-    "isNpd"                 boolean
+    "isNpd"                 boolean,
+    size                    text,
+    "sizeUnit"              text,
+    "pricePerWeight"        text
 );
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
@@ -800,7 +803,8 @@ BEGIN
     FROM product_status
     WHERE rownum = 1;
 
-    SELECT MAX(date) AS dd_retailer_last_load_date
+    SELECT MAX(date)
+    INTO dd_retailer_last_load_date
     FROM last_product_status;
 
     INSERT INTO staging.load(id, data,
@@ -880,6 +884,9 @@ BEGIN
                                      "priceMatch",
                                      "priceLock",
                                      "isNpd",
+                                     LEFT(product.size, 255)                               AS size,
+                                     LEFT("sizeUnit", 255)                                 AS "sizeUnit",
+                                     LEFT("pricePerWeight", 255)                           AS "pricePerWeight",
                                      ROW_NUMBER()
                                      OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
@@ -928,6 +935,9 @@ BEGIN
                                "priceMatch",
                                "priceLock",
                                "isNpd",
+                               size,
+                               "sizeUnit",
+                               "pricePerWeight",
                                ROW_NUMBER() OVER ()                      AS index
                         FROM tmp_daily_data_pp
                         WHERE rownum = 1)
@@ -962,14 +972,14 @@ BEGIN
            NOW()                                                               AS "createdAt",
            NOW()                                                               AS "updatedAt",
            NULL                                                                AS "imageId",
-           ''                                                                     size,
+           dd_products.size,
            NULL                                                                AS "pricePerWeight",
            dd_products.href,
            ''                                                                  AS nutritional,
            dd_products."originalPrice"                                         AS "basePrice",
            dd_products."originalPrice"                                         AS "shelfPrice",
            dd_products."productTitle"                                          AS "productTitleDetail",
-           NULL                                                                AS "sizeUnit",
+           dd_products."sizeUnit",
            dd_date_id                                                          AS "dateId",
 
            dd_products."countryCode",
@@ -1003,8 +1013,9 @@ BEGIN
            ''                                                                  AS screenshot,
            prod_brand."brandId",
            trsf_ean."EANs",
-           COALESCE(trsf_promo.promotions, ARRAY []::staging.t_promotion_mb[]) AS promotions
-
+           COALESCE(trsf_promo.promotions, ARRAY []::staging.t_promotion_mb[]) AS promotions,
+           dd_products."pricePerWeight",
+           load_retailer_data_pp.load_id                                       AS load_id
     FROM dd_products
              CROSS JOIN LATERAL ( SELECT CASE
                                              /*
@@ -1344,7 +1355,7 @@ BEGIN
 
     UPDATE tmp_product_pp
     SET status=CASE
-                   WHEN dd_date - last_product_status.date = '1 day' THEN 'Listed'
+                   WHEN dd_date = last_product_status.date + '1 day'::interval THEN 'Listed'
                    ELSE 'Re-listed'
         END
     FROM last_product_status
@@ -1361,7 +1372,7 @@ BEGIN
     INSERT
     INTO tmp_product_pp ("sourceType",
                          ean,
-                         promotions,
+        -- promotions,
                          "promotionDescription",
                          features,
                          date,
@@ -1372,11 +1383,11 @@ BEGIN
                          "secondaryImages",
                          "productDescription",
                          "productInfo",
-                         "promotedPrice",
+        -- "promotedPrice",
                          "productInStock",
                          "productInListing",
-                         "reviewsCount",
-                         "reviewsStars",
+        -- "reviewsCount",
+        -- "reviewsStars",
                          "eposId",
                          multibuy,
                          "coreProductId",
@@ -1388,8 +1399,8 @@ BEGIN
                          "pricePerWeight",
                          href,
                          nutritional,
-                         "basePrice",
-                         "shelfPrice",
+        --"basePrice",
+        --"shelfPrice",
                          "productTitleDetail",
                          "sizeUnit",
                          "dateId",
@@ -1398,11 +1409,13 @@ BEGIN
                          "priceMatchDescription",
                          "priceMatch",
                          "priceLock",
-                         "isNpd", load_id,
+                         "isNpd",
+                         "pricePerWeight",
+                         load_id,
                          status)
     SELECT "sourceType",
            ean,
-           promotions,
+           --promotions,
            "promotionDescription",
            features,
            dd_date     AS "date",
@@ -1413,11 +1426,11 @@ BEGIN
            "secondaryImages",
            "productDescription",
            "productInfo",
-           "promotedPrice",
+           --"promotedPrice",
            "productInStock",
            "productInListing",
-           "reviewsCount",
-           "reviewsStars",
+           --"reviewsCount",
+           --"reviewsStars",
            "eposId",
            multibuy,
            "coreProductId",
@@ -1429,8 +1442,8 @@ BEGIN
            "pricePerWeight",
            href,
            nutritional,
-           "basePrice",
-           "shelfPrice",
+           --"basePrice",
+           --"shelfPrice",
            "productTitleDetail",
            "sizeUnit",
            dd_date_id  AS "dateId",
@@ -1440,6 +1453,7 @@ BEGIN
            "priceMatch",
            "priceLock",
            "isNpd",
+           "pricePerWeight",
            NULL        AS load_id,
            'De-listed' AS status
     FROM delisted_product;
@@ -1483,7 +1497,8 @@ BEGIN
                               "priceMatchDescription",
                               "priceMatch",
                               "priceLock",
-                              "isNpd", load_id)
+                              "isNpd",
+                              load_id)
             SELECT "sourceType",
                    ean,
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
@@ -1570,14 +1585,148 @@ BEGIN
 
 
     INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
-    SELECT "retailerId", "coreProductId", date, id AS "productId", status
+    --SELECT "retailerId", "coreProductId", date, id AS "productId", status
+    SELECT "retailerId", "coreProductId", date, MAX(id) AS "productId", status
     FROM tmp_product_pp
+    GROUP BY "retailerId", "coreProductId", date, status
     ON CONFLICT ("retailerId", "coreProductId", date)
         DO UPDATE
         SET status=excluded.status;
 
-    INSERT INTO staging.debug_tmp_product_pp
-    SELECT load_retailer_data_pp.load_id, *
+    INSERT INTO staging.debug_tmp_product_pp (load_id,
+                                              id,
+                                              "sourceType",
+                                              ean,
+                                              "promotionDescription",
+                                              features,
+                                              date,
+                                              "sourceId",
+                                              "productBrand",
+                                              "productTitle",
+                                              "productImage",
+                                              "newCoreImage",
+                                              "secondaryImages",
+                                              "productDescription",
+                                              "productInfo",
+                                              "promotedPrice",
+                                              "productInStock",
+                                              "productInListing",
+                                              "reviewsCount",
+                                              "reviewsStars",
+                                              "eposId",
+                                              multibuy,
+                                              "coreProductId",
+                                              "retailerId",
+                                              "createdAt",
+                                              "updatedAt",
+                                              "imageId",
+                                              size,
+                                              "pricePerWeight",
+                                              href,
+                                              nutritional,
+                                              "basePrice",
+                                              "shelfPrice",
+                                              "productTitleDetail",
+                                              "sizeUnit",
+                                              "dateId",
+                                              "countryCode",
+                                              currency,
+                                              "cardPrice",
+                                              "onPromo",
+                                              bundled,
+                                              "originalPrice",
+                                              "productPrice",
+                                              status,
+                                              "productOptions",
+                                              shop,
+                                              "amazonShop",
+                                              choice,
+                                              "amazonChoice",
+                                              "lowStock",
+                                              "sellParty",
+                                              "amazonSellParty",
+                                              sell,
+                                              "fulfilParty",
+                                              "amazonFulfilParty",
+                                              "amazonSell",
+                                              marketplace,
+                                              "marketplaceData",
+                                              "priceMatchDescription",
+                                              "priceMatch",
+                                              "priceLock",
+                                              "isNpd",
+                                              "eanIssues",
+                                              screenshot,
+                                              "brandId",
+                                              "EANs",
+                                              promotions)
+    SELECT tmp_product_pp.load_id,
+           id,
+           "sourceType",
+           ean,
+           "promotionDescription",
+           features,
+           date,
+           "sourceId",
+           "productBrand",
+           "productTitle",
+           "productImage",
+           "newCoreImage",
+           "secondaryImages",
+           "productDescription",
+           "productInfo",
+           "promotedPrice",
+           "productInStock",
+           "productInListing",
+           "reviewsCount",
+           "reviewsStars",
+           "eposId",
+           multibuy,
+           "coreProductId",
+           "retailerId",
+           "createdAt",
+           "updatedAt",
+           "imageId",
+           size,
+           "pricePerWeight",
+           href,
+           nutritional,
+           "basePrice",
+           "shelfPrice",
+           "productTitleDetail",
+           "sizeUnit",
+           "dateId",
+           "countryCode",
+           currency,
+           "cardPrice",
+           "onPromo",
+           bundled,
+           "originalPrice",
+           "productPrice",
+           status,
+           "productOptions",
+           shop,
+           "amazonShop",
+           choice,
+           "amazonChoice",
+           "lowStock",
+           "sellParty",
+           "amazonSellParty",
+           sell,
+           "fulfilParty",
+           "amazonFulfilParty",
+           "amazonSell",
+           marketplace,
+           "marketplaceData",
+           "priceMatchDescription",
+           "priceMatch",
+           "priceLock",
+           "isNpd",
+           "eanIssues",
+           screenshot,
+           "brandId",
+           "EANs",
+           promotions
     FROM tmp_product_pp;
 
     /*  createAmazonProduct */
@@ -1765,7 +1914,7 @@ BEGIN
     SELECT *
     FROM debug_coreRetailerDates;
 
-
+    DROP TABLE IF EXISTS last_product_status;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     RETURN;
@@ -1778,9 +1927,10 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json, load_id i
 AS
 $$
 DECLARE
-    dd_date     date;
-    dd_date_id  integer;
-    dd_retailer retailers;
+    dd_date                    date;
+    dd_date_id                 integer;
+    dd_retailer                retailers;
+    dd_retailer_last_load_date date;
 BEGIN
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
@@ -1823,7 +1973,8 @@ BEGIN
     FROM product_status
     WHERE rownum = 1;
 
-    SELECT MAX(date) AS dd_retailer_last_load_date
+    SELECT MAX(date)
+    INTO dd_retailer_last_load_date
     FROM last_product_status;
 
     DROP TABLE IF EXISTS tmp_daily_data;
@@ -2098,9 +2249,10 @@ TO DO
            sell,
            "fulfilParty",
            "amazonFulfilParty",
-           'Newly' AS status,
+           'Newly'                         AS status,
            screenshot,
-           ranking.ranking_data
+           ranking.ranking_data,
+           load_retailer_data_base.load_id AS load_id
     FROM daily_data
              INNER JOIN ranking USING ("sourceId")
     WHERE rownum = 1;
@@ -2428,7 +2580,7 @@ TO DO
 
     UPDATE tmp_product
     SET status=CASE
-                   WHEN dd_date - last_product_status.date = '1 day' THEN 'Listed'
+                   WHEN dd_date = last_product_status.date + '1 day'::interval THEN 'Listed'
                    ELSE 'Re-listed'
         END
     FROM last_product_status
@@ -2445,12 +2597,12 @@ TO DO
     INSERT
     INTO tmp_product (id,
                       "coreProductId",
-                      promotions,
+        --promotions,
         --"productPrice",
         --"originalPrice",
                       "basePrice",
                       "shelfPrice",
-                      "promotedPrice",
+        --"promotedPrice",
                       "retailerId",
                       "dateId",
         --featured,
@@ -2506,12 +2658,12 @@ TO DO
                       status)
     SELECT id,
            "coreProductId",
-           promotions,
+           --promotions,
            --"productPrice",
            --"originalPrice",
            "basePrice",
            "shelfPrice",
-           "promotedPrice",
+           --"promotedPrice",
            "retailerId",
            dd_date_id     "dateId",
            --featured,
@@ -2947,14 +3099,135 @@ TO DO
     FROM debug_productStatuses;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
-    INSERT INTO staging.debug_tmp_product
-    SELECT load_retailer_data_base.load_id, *
+    INSERT INTO staging.debug_tmp_product (load_id,
+                                           id,
+                                           "coreProductId",
+                                           promotions,
+                                           "productPrice",
+                                           "originalPrice",
+                                           "basePrice",
+                                           "shelfPrice",
+                                           "promotedPrice",
+                                           "retailerId",
+                                           "dateId",
+                                           featured,
+                                           bundled,
+                                           date,
+                                           ean,
+                                           "eposId",
+                                           features,
+                                           href,
+                                           "inTaxonomy",
+                                           "isFeatured",
+                                           multibuy,
+                                           nutritional,
+                                           "pricePerWeight",
+                                           "productBrand",
+                                           "productDescription",
+                                           "productImage",
+                                           "newCoreImage",
+                                           "productInStock",
+                                           "productInfo",
+                                           "productTitle",
+                                           "productTitleDetail",
+                                           "reviewsCount",
+                                           "reviewsStars",
+                                           "secondaryImages",
+                                           size,
+                                           "sizeUnit",
+                                           "sourceId",
+                                           "sourceType",
+                                           "brandId",
+                                           "productOptions",
+                                           "eanIssues",
+                                           shop,
+                                           "amazonShop",
+                                           choice,
+                                           "amazonChoice",
+                                           "lowStock",
+                                           "sellParty",
+                                           "amazonSellParty",
+                                           "amazonSell",
+                                           marketplace,
+                                           "marketplaceData",
+                                           "priceMatchDescription",
+                                           "priceMatch",
+                                           "priceLock",
+                                           "isNpd",
+                                           sell,
+                                           "fulfilParty",
+                                           "amazonFulfilParty",
+                                           status,
+                                           screenshot,
+                                           ranking_data)
+    SELECT tmp_product.load_id,
+           id,
+           "coreProductId",
+           promotions,
+           "productPrice",
+           "originalPrice",
+           "basePrice",
+           "shelfPrice",
+           "promotedPrice",
+           "retailerId",
+           "dateId",
+           featured,
+           bundled,
+           date,
+           ean,
+           "eposId",
+           features,
+           href,
+           "inTaxonomy",
+           "isFeatured",
+           multibuy,
+           nutritional,
+           "pricePerWeight",
+           "productBrand",
+           "productDescription",
+           "productImage",
+           "newCoreImage",
+           "productInStock",
+           "productInfo",
+           "productTitle",
+           "productTitleDetail",
+           "reviewsCount",
+           "reviewsStars",
+           "secondaryImages",
+           size,
+           "sizeUnit",
+           "sourceId",
+           "sourceType",
+           "brandId",
+           "productOptions",
+           "eanIssues",
+           shop,
+           "amazonShop",
+           choice,
+           "amazonChoice",
+           "lowStock",
+           "sellParty",
+           "amazonSellParty",
+           "amazonSell",
+           marketplace,
+           "marketplaceData",
+           "priceMatchDescription",
+           "priceMatch",
+           "priceLock",
+           "isNpd",
+           sell,
+           "fulfilParty",
+           "amazonFulfilParty",
+           status,
+           screenshot,
+           ranking_data
     FROM tmp_product;
 
     INSERT INTO staging.debug_tmp_daily_data
     SELECT load_retailer_data_base.load_id, *
     FROM tmp_daily_data;
 
+    DROP TABLE IF EXISTS last_product_status;
     RETURN;
 END ;
 
