@@ -177,10 +177,11 @@ FROM "retailerPromotions"
 WHERE "retailerId" = 1337
 
  */
-
+SET work_mem = '4GB';
+SET max_parallel_workers_per_gather = 4;
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id = 1;
+WHERE id in (3,4);  --4
 
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
