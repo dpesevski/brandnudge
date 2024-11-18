@@ -973,7 +973,6 @@ BEGIN
            NOW()                                                               AS "updatedAt",
            NULL                                                                AS "imageId",
            dd_products.size,
-           NULL                                                                AS "pricePerWeight",
            dd_products.href,
            ''                                                                  AS nutritional,
            dd_products."originalPrice"                                         AS "basePrice",
@@ -1060,155 +1059,6 @@ BEGIN
              LEFT OUTER JOIN prod_core ON (prod_core.ean = checkEAN.ean)
              LEFT OUTER JOIN prod_retailersource USING ("sourceId");
 
-    WITH ret_promo AS (SELECT id AS "retailerPromotionId",
-                              "retailerId",
-                              "promotionMechanicId",
-                              regexp,
-                              "promotionMechanicName"
-                       FROM "retailerPromotions"
-                                INNER JOIN (SELECT id   AS "promotionMechanicId",
-                                                   name AS "promotionMechanicName"
-                                            FROM "promotionMechanics") AS "promotionMechanics"
-                                           USING ("promotionMechanicId")),
-         product_promo AS (SELECT product."retailerId",
-                                  "sourceId",
-                                  promo_indx,
-                                  lat_dates."startDate",
-                                  lat_dates."endDate",
-
-                                  "promotedPrice",
-                                  "shelfPrice",
-                                  "productPrice",
-
-                                  lat_promo_id."promoId",
-                                  promo.description,
-                                  promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
-                                  promo."multibuyPrice"                                AS "multibuyPrice",
-
-                                  COALESCE(ret_promo."retailerPromotionId",
-                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
-                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
-                                  COALESCE(ret_promo."promotionMechanicId",
-                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
-                                  COALESCE(
-                                          ret_promo."promotionMechanicName",
-                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
-                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx ORDER BY
-                                      LOWER(ret_promo."promotionMechanicName") =
-                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
-                           FROM tmp_product_pp AS product
-                                    CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
-                                                                                                   "retailerPromotionId",
-                                                                                                   "startDate",
-                                                                                                   "endDate",
-                                                                                                   description,
-                                                                                                   mechanic,
-                                                                                                   "multibuyPrice",
-                                                                                                   promo_indx)
-                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."startDate", product.date) AS "startDate",
-                                                               COALESCE(promo."endDate", product.date)   AS "endDate") AS lat_dates_base
-                                    CROSS JOIN LATERAL (SELECT DATE_PART('month', lat_dates_base."startDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('day', lat_dates_base."startDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('year', lat_dates_base."startDate"::date) AS "startDate",
-
-                                                               DATE_PART('month', lat_dates_base."endDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('day', lat_dates_base."endDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('year', lat_dates_base."endDate"::date)   AS "endDate"
-
-                               ) AS lat_dates
-                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."promoId",
-                                                                        REPLACE(dd_retailer.id || '_' || "sourceId" ||
-                                                                                '_' ||
-                                                                                description || '_' ||
-                                                                                lat_dates."startDate", ' ',
-                                                                                '_')) AS "promoId") AS lat_promo_id
-                                    CROSS JOIN LATERAL (
-                               SELECT LOWER(multi_replace(promo.description,
-                                                          'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
-                                                          '5',
-                                                          'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
-                                                          '10',
-                                                          ',', '')) AS desc
-                               ) AS promo_desc_trsf
-                                    LEFT OUTER JOIN ret_promo AS default_ret_promo
-                                                    ON (product."retailerId" = default_ret_promo."retailerId" AND
-                                                        default_ret_promo."promotionMechanicId" = 3)
-                                    LEFT OUTER JOIN ret_promo
-                                                    ON (product."retailerId" = ret_promo."retailerId" AND
-                                                        CASE
-                                                            WHEN ret_promo."promotionMechanicId" IS NULL THEN FALSE
-                                                            WHEN LOWER(ret_promo."promotionMechanicName") =
-                                                                 COALESCE(promo.mechanic, '') THEN TRUE
-                                                            WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
-                                                                THEN FALSE
-                                                            WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
-                                                                 promo_desc_trsf.desc ~ '(\d+\/\d+)'
-                                                                THEN FALSE
-                                                            ELSE
-                                                                promo_desc_trsf.desc ~ ret_promo.regexp
-                                                            END
-                                                        )),
-         promo_price_calc AS (SELECT "sourceId",
-                                     description,
-                                     "multibuyPrice",
-                                     "promoId",
-                                     "retailerPromotionId",
-                                     "startDate",
-                                     "endDate",
-                                     "promotionMechanicName",
-                                     promo_indx,
-                                     price_calc."promotedPrice",
-                                     price_calc."shelfPrice",
-                                     ROW_NUMBER()
-                                     OVER (PARTITION BY "sourceId" ORDER BY price_calc."promotedPrice", "multibuyPrice" NULLS LAST ) AS promo_price_order
-                              FROM product_promo
-                                       CROSS JOIN LATERAL (SELECT CASE
-                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
-                                                                          COALESCE("multibuyPrice",
-                                                                                   calculateMultibuyPrice(
-                                                                                           description,
-                                                                                           "promotedPrice")
-                                                                          )
-                                                                      ELSE "productPrice"
-                                                                      END AS "promotedPrice",
-                                                                  CASE
-                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
-                                                                          "shelfPrice"
-                                                                      ELSE
-                                                                          "productPrice"
-                                                                      END AS "shelfPrice") AS price_calc
-                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
-         ),
-         prod_prev_promo AS (SELECT *
-                             FROM staging.products_last
-                                      INNER JOIN promotions USING ("productId")),
-         upd_product_promo AS (SELECT promo."sourceId",
-                                      MAX(promo."promotedPrice") FILTER (WHERE promo.promo_price_order = 1) AS "promotedPrice",
-                                      MAX(promo."shelfPrice") FILTER (WHERE promo.promo_price_order = 1)    AS "shelfPrice",
-                                      ARRAY_AGG((COALESCE(prev_promo."promoId", promo."promoId"),
-                                                 promo."retailerPromotionId",
-                                                 COALESCE(prev_promo."startDate", promo."startDate"),
-                                                 promo."endDate",
-                                                 promo.description,
-                                                 promo."promotionMechanicName",
-                                                 promo."multibuyPrice")::staging.t_promotion_mb
-                                                ORDER BY promo.promo_indx)                                  AS promotions
-                               FROM promo_price_calc AS promo
-                                        LEFT OUTER JOIN prod_prev_promo AS prev_promo
-                                                        ON (prev_promo."sourceId" = promo."sourceId" AND
-                                                            prev_promo."retailerId" = dd_retailer.id AND
-                                                            prev_promo.description = promo.description)
-                               GROUP BY 1)
-    UPDATE tmp_product_pp
-    SET promotions      = upd_product_promo.promotions,
-        "promotedPrice" = upd_product_promo."promotedPrice",
-        "shelfPrice"    = upd_product_promo."shelfPrice"
-    FROM upd_product_promo
-    WHERE tmp_product_pp."sourceId" = upd_product_promo."sourceId";
 
     /*  createCoreBy    */
     WITH coreProductData AS (SELECT ean,
@@ -1353,6 +1203,156 @@ BEGIN
     SELECT *
     FROM ins_coreProductBarcodes;
 
+
+    WITH ret_promo AS (SELECT id AS "retailerPromotionId",
+                              "retailerId",
+                              "promotionMechanicId",
+                              regexp,
+                              "promotionMechanicName"
+                       FROM "retailerPromotions"
+                                INNER JOIN (SELECT id   AS "promotionMechanicId",
+                                                   name AS "promotionMechanicName"
+                                            FROM "promotionMechanics") AS "promotionMechanics"
+                                           USING ("promotionMechanicId")),
+         product_promo AS (SELECT product."retailerId",
+                                  "coreProductId",
+                                  promo_indx,
+                                  lat_dates."startDate",
+                                  lat_dates."endDate",
+
+                                  "promotedPrice",
+                                  "shelfPrice",
+                                  "productPrice",
+
+                                  lat_promo_id."promoId",
+                                  promo.description,
+                                  promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
+                                  promo."multibuyPrice"                                AS "multibuyPrice",
+
+                                  COALESCE(ret_promo."retailerPromotionId",
+                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
+                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
+                                  COALESCE(ret_promo."promotionMechanicId",
+                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
+                                  COALESCE(
+                                          ret_promo."promotionMechanicName",
+                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
+                                  ROW_NUMBER() OVER (PARTITION BY "coreProductId", promo_indx ORDER BY
+                                      LOWER(ret_promo."promotionMechanicName") =
+                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
+                           FROM tmp_product_pp AS product
+                                    CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
+                                                                                                   "retailerPromotionId",
+                                                                                                   "startDate",
+                                                                                                   "endDate",
+                                                                                                   description,
+                                                                                                   mechanic,
+                                                                                                   "multibuyPrice",
+                                                                                                   promo_indx)
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."startDate", product.date) AS "startDate",
+                                                               COALESCE(promo."endDate", product.date)   AS "endDate") AS lat_dates_base
+                                    CROSS JOIN LATERAL (SELECT DATE_PART('month', lat_dates_base."startDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('day', lat_dates_base."startDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('year', lat_dates_base."startDate"::date) AS "startDate",
+
+                                                               DATE_PART('month', lat_dates_base."endDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('day', lat_dates_base."endDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('year', lat_dates_base."endDate"::date)   AS "endDate"
+
+                               ) AS lat_dates
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."promoId",
+                                                                        REPLACE(dd_retailer.id || '_' || "sourceId" ||
+                                                                                '_' ||
+                                                                                description || '_' ||
+                                                                                lat_dates."startDate", ' ',
+                                                                                '_')) AS "promoId") AS lat_promo_id
+                                    CROSS JOIN LATERAL (
+                               SELECT LOWER(multi_replace(promo.description,
+                                                          'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
+                                                          '5',
+                                                          'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
+                                                          '10',
+                                                          ',', '')) AS desc
+                               ) AS promo_desc_trsf
+                                    LEFT OUTER JOIN ret_promo AS default_ret_promo
+                                                    ON (product."retailerId" = default_ret_promo."retailerId" AND
+                                                        default_ret_promo."promotionMechanicId" = 3)
+                                    LEFT OUTER JOIN ret_promo
+                                                    ON (product."retailerId" = ret_promo."retailerId" AND
+                                                        CASE
+                                                            WHEN ret_promo."promotionMechanicId" IS NULL THEN FALSE
+                                                            WHEN LOWER(ret_promo."promotionMechanicName") =
+                                                                 COALESCE(promo.mechanic, '') THEN TRUE
+                                                            WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
+                                                                THEN FALSE
+                                                            WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
+                                                                 promo_desc_trsf.desc ~ '(\d+\/\d+)'
+                                                                THEN FALSE
+                                                            ELSE
+                                                                promo_desc_trsf.desc ~ ret_promo.regexp
+                                                            END
+                                                        )),
+         promo_price_calc AS (SELECT "coreProductId",
+                                     description,
+                                     "multibuyPrice",
+                                     "promoId",
+                                     "retailerPromotionId",
+                                     "startDate",
+                                     "endDate",
+                                     "promotionMechanicName",
+                                     promo_indx,
+                                     price_calc."promotedPrice",
+                                     price_calc."shelfPrice",
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "coreProductId" ORDER BY price_calc."promotedPrice", "multibuyPrice" NULLS LAST ) AS promo_price_order
+                              FROM product_promo
+                                       CROSS JOIN LATERAL (SELECT CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
+                                                                          COALESCE("multibuyPrice",
+                                                                                   calculateMultibuyPrice(
+                                                                                           description,
+                                                                                           "promotedPrice")
+                                                                          )
+                                                                      ELSE "productPrice"
+                                                                      END AS "promotedPrice",
+                                                                  CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy' THEN
+                                                                          "shelfPrice"
+                                                                      ELSE
+                                                                          "productPrice"
+                                                                      END AS "shelfPrice") AS price_calc
+                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+         ),
+         prod_prev_promo AS (SELECT *
+                             FROM last_product_status
+                                      INNER JOIN promotions USING ("productId")),
+         upd_product_promo AS (SELECT promo."coreProductId",
+                                      MAX(promo."promotedPrice") FILTER (WHERE promo.promo_price_order = 1) AS "promotedPrice",
+                                      MAX(promo."shelfPrice") FILTER (WHERE promo.promo_price_order = 1)    AS "shelfPrice",
+                                      ARRAY_AGG((COALESCE(prev_promo."promoId", promo."promoId"),
+                                                 promo."retailerPromotionId",
+                                                 COALESCE(prev_promo."startDate", promo."startDate"),
+                                                 promo."endDate",
+                                                 promo.description,
+                                                 promo."promotionMechanicName",
+                                                 promo."multibuyPrice")::staging.t_promotion_mb
+                                                ORDER BY promo.promo_indx)                                  AS promotions
+                               FROM promo_price_calc AS promo
+                                        LEFT OUTER JOIN prod_prev_promo AS prev_promo
+                                                        ON (prev_promo."coreProductId" = promo."coreProductId" AND
+                                                            prev_promo.description = promo.description)
+                               GROUP BY 1)
+    UPDATE tmp_product_pp
+    SET promotions      = upd_product_promo.promotions,
+        "promotedPrice" = upd_product_promo."promotedPrice",
+        "shelfPrice"    = upd_product_promo."shelfPrice"
+    FROM upd_product_promo
+    WHERE tmp_product_pp."coreProductId" = upd_product_promo."coreProductId";
+
     UPDATE tmp_product_pp
     SET status=CASE
                    WHEN dd_date = last_product_status.date + '1 day'::interval THEN 'Listed'
@@ -1410,7 +1410,6 @@ BEGIN
                          "priceMatch",
                          "priceLock",
                          "isNpd",
-                         "pricePerWeight",
                          load_id,
                          status)
     SELECT "sourceType",
@@ -1453,7 +1452,6 @@ BEGIN
            "priceMatch",
            "priceLock",
            "isNpd",
-           "pricePerWeight",
            NULL        AS load_id,
            'De-listed' AS status
     FROM delisted_product;
@@ -2257,164 +2255,6 @@ TO DO
              INNER JOIN ranking USING ("sourceId")
     WHERE rownum = 1;
 
-    /*  prepare products' promotions data   */
-    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
-    WITH ret_promo AS (SELECT id AS "retailerPromotionId",
-                              "retailerId",
-                              "promotionMechanicId",
-                              regexp,
-                              "promotionMechanicName"
-                       FROM "retailerPromotions"
-                                INNER JOIN (SELECT id   AS "promotionMechanicId",
-                                                   name AS "promotionMechanicName"
-                                            FROM "promotionMechanics") AS "promotionMechanics"
-                                           USING ("promotionMechanicId")),
-         product_promo AS (SELECT product."retailerId",
-                                  "sourceId",
-                                  promo_indx,
-                                  lat_dates."startDate",
-                                  lat_dates."endDate",
-
-                                  "promotedPrice",
-                                  "shelfPrice",
-                                  "productPrice",
-                                  "sourceType",
-
-                                  lat_promo_id."promoId",
-                                  promo.description,
-                                  promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
-
-
-                                  COALESCE(ret_promo."retailerPromotionId",
-                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
-                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
-                                  COALESCE(ret_promo."promotionMechanicId",
-                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
-                                  COALESCE(
-                                          ret_promo."promotionMechanicName",
-                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
-                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx ORDER BY
-                                      LOWER(ret_promo."promotionMechanicName") =
-                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
-                           FROM tmp_product AS product
-                                    CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
-                                                                                                   "retailerPromotionId",
-                                                                                                   "startDate",
-                                                                                                   "endDate",
-                                                                                                   description,
-                                                                                                   mechanic,
-                                                                                                   promo_indx)
-                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."startDate", product.date) AS "startDate",
-                                                               COALESCE(promo."endDate", product.date)   AS "endDate") AS lat_dates_base
-                                    CROSS JOIN LATERAL (SELECT DATE_PART('month', lat_dates_base."startDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('day', lat_dates_base."startDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('year', lat_dates_base."startDate"::date) AS "startDate",
-
-                                                               DATE_PART('month', lat_dates_base."endDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('day', lat_dates_base."endDate"::date) ||
-                                                               '/' ||
-                                                               DATE_PART('year', lat_dates_base."endDate"::date)   AS "endDate"
-
-                               ) AS lat_dates
-                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."promoId",
-                                                                        REPLACE("retailerId" || '_' || "sourceId" ||
-                                                                                '_' ||
-                                                                                description || '_' ||
-                                                                                lat_dates."startDate", ' ',
-                                                                                '_')) AS "promoId") AS lat_promo_id
-                                    CROSS JOIN LATERAL (
-                               SELECT LOWER(multi_replace(promo.description,
-                                                          'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
-                                                          '5',
-                                                          'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
-                                                          '10',
-                                                          ',', '')) AS desc
-                               ) AS promo_desc_trsf
-                                    LEFT OUTER JOIN ret_promo AS default_ret_promo
-                                                    ON (product."retailerId" = default_ret_promo."retailerId" AND
-                                                        default_ret_promo."promotionMechanicId" = 3)
-                                    LEFT OUTER JOIN ret_promo
-                                                    ON (product."retailerId" = ret_promo."retailerId" AND
-                                                        CASE
-                                                            WHEN ret_promo."promotionMechanicId" IS NULL THEN FALSE
-                                                            WHEN LOWER(ret_promo."promotionMechanicName") =
-                                                                 COALESCE(promo.mechanic, '') THEN TRUE
-                                                            WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
-                                                                THEN FALSE
-                                                            WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
-                                                                 promo_desc_trsf.desc ~ '(\d+\/\d+)'
-                                                                THEN FALSE
-                                                            ELSE
-                                                                promo_desc_trsf.desc ~ ret_promo.regexp
-                                                            END
-                                                        )),
-         promo_price_calc AS (SELECT "sourceId",
-                                     description,
-                                     "promoId",
-                                     "retailerPromotionId",
-                                     "startDate",
-                                     "endDate",
-                                     "promotionMechanicName",
-                                     promo_indx,
-                                     price_calc."promotedPrice",
-                                     price_calc."shelfPrice",
-                                     ROW_NUMBER()
-                                     OVER (PARTITION BY "sourceId" ORDER BY price_calc."promotedPrice" ) AS promo_price_order
-                              FROM product_promo
-                                       CROSS JOIN LATERAL (SELECT CASE
-                                                                      WHEN "promotionMechanicName" = 'Multibuy'
-                                                                          THEN calculateMultibuyPrice(
-                                                                              description,
-                                                                              "promotedPrice")
-                                                                      ELSE
-                                                                          "productPrice"
-                                                                      END AS "promotedPrice",
-                                                                  CASE
-                                                                      WHEN "promotionMechanicName" = 'Multibuy'
-                                                                          THEN "shelfPrice"
-                                                                      WHEN NOT (
-                                                                          "sourceType" = 'tesco' AND
-                                                                          LOWER(description) ~
-                                                                          'clubcard price')
-                                                                          THEN
-                                                                          "productPrice"
-                                                                      ELSE
-                                                                          "shelfPrice"
-                                                                      END AS "shelfPrice") AS price_calc
-                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
-         ),
-
-         prod_prev_promo AS (SELECT *
-                             FROM staging.products_last
-                                      INNER JOIN promotions USING ("productId")),
-         upd_product_promo AS (SELECT promo."sourceId",
-                                      MAX(promo."promotedPrice") FILTER (WHERE promo.promo_price_order = 1) AS "promotedPrice",
-                                      MAX(promo."shelfPrice") FILTER (WHERE promo.promo_price_order = 1)    AS "shelfPrice",
-                                      ARRAY_AGG(DISTINCT (COALESCE(prev_promo."promoId", promo."promoId"),
-                                                          promo."retailerPromotionId",
-                                                          COALESCE(prev_promo."startDate", promo."startDate"),
-                                                          promo."endDate",
-                                                          promo.description,
-                                                          promo."promotionMechanicName")::staging.t_promotion
-                                          --          ORDER BY promo.promo_indx
-                                      )                                                                     AS promotions
-                               FROM promo_price_calc AS promo
-                                        LEFT OUTER JOIN prod_prev_promo AS prev_promo
-                                                        ON (prev_promo."sourceId" = promo."sourceId" AND
-                                                            prev_promo."retailerId" = dd_retailer.id AND
-                                                            prev_promo.description = promo.description)
-                               GROUP BY 1)
-    UPDATE tmp_product
-    SET promotions      = upd_product_promo.promotions,
-        "promotedPrice" = upd_product_promo."promotedPrice",
-        "shelfPrice"    = upd_product_promo."shelfPrice"
-    FROM upd_product_promo
-    WHERE tmp_product."sourceId" = upd_product_promo."sourceId";
-
-
     /*  create the new coreProduct   */
     /*
     TO DO:
@@ -2576,6 +2416,162 @@ TO DO
     INTO staging.debug_coreProductBarcodes
     SELECT *
     FROM ins_coreProductBarcodes;
+
+    /*  prepare products' promotions data   */
+    /*  promotions - multibuy price calc  (not as in the order in createProducts) */
+    WITH ret_promo AS (SELECT id AS "retailerPromotionId",
+                              "retailerId",
+                              "promotionMechanicId",
+                              regexp,
+                              "promotionMechanicName"
+                       FROM "retailerPromotions"
+                                INNER JOIN (SELECT id   AS "promotionMechanicId",
+                                                   name AS "promotionMechanicName"
+                                            FROM "promotionMechanics") AS "promotionMechanics"
+                                           USING ("promotionMechanicId")),
+         product_promo AS (SELECT product."retailerId",
+                                  "coreProductId",
+                                  promo_indx,
+                                  lat_dates."startDate",
+                                  lat_dates."endDate",
+
+                                  "promotedPrice",
+                                  "shelfPrice",
+                                  "productPrice",
+                                  "sourceType",
+
+                                  lat_promo_id."promoId",
+                                  promo.description,
+                                  promo.mechanic, -- Does not exists in the sample retailer data.  Is referenced in the nodejs model.
+
+
+                                  COALESCE(ret_promo."retailerPromotionId",
+                                           default_ret_promo."retailerPromotionId")    AS "retailerPromotionId",
+                                  COALESCE(ret_promo.regexp, default_ret_promo.regexp) AS regexp,
+                                  COALESCE(ret_promo."promotionMechanicId",
+                                           default_ret_promo."promotionMechanicId")    AS "promotionMechanicId",
+                                  COALESCE(
+                                          ret_promo."promotionMechanicName",
+                                          default_ret_promo."promotionMechanicName")   AS "promotionMechanicName",
+                                  ROW_NUMBER() OVER (PARTITION BY "sourceId", promo_indx ORDER BY
+                                      LOWER(ret_promo."promotionMechanicName") =
+                                      COALESCE(promo.mechanic, '') DESC)               AS rownum
+                           FROM tmp_product AS product
+                                    CROSS JOIN LATERAL UNNEST(promotions) WITH ORDINALITY AS promo("promoId",
+                                                                                                   "retailerPromotionId",
+                                                                                                   "startDate",
+                                                                                                   "endDate",
+                                                                                                   description,
+                                                                                                   mechanic,
+                                                                                                   promo_indx)
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."startDate", product.date) AS "startDate",
+                                                               COALESCE(promo."endDate", product.date)   AS "endDate") AS lat_dates_base
+                                    CROSS JOIN LATERAL (SELECT DATE_PART('month', lat_dates_base."startDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('day', lat_dates_base."startDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('year', lat_dates_base."startDate"::date) AS "startDate",
+
+                                                               DATE_PART('month', lat_dates_base."endDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('day', lat_dates_base."endDate"::date) ||
+                                                               '/' ||
+                                                               DATE_PART('year', lat_dates_base."endDate"::date)   AS "endDate"
+
+                               ) AS lat_dates
+                                    CROSS JOIN LATERAL (SELECT COALESCE(promo."promoId",
+                                                                        REPLACE("retailerId" || '_' || "sourceId" ||
+                                                                                '_' ||
+                                                                                description || '_' ||
+                                                                                lat_dates."startDate", ' ',
+                                                                                '_')) AS "promoId") AS lat_promo_id
+                                    CROSS JOIN LATERAL (
+                               SELECT LOWER(multi_replace(promo.description,
+                                                          'one', '1', 'two', '2', 'three', '3', 'four', '4', 'five',
+                                                          '5',
+                                                          'six', '6', 'seven', '7', 'eight', '8', 'nine', '9', 'ten',
+                                                          '10',
+                                                          ',', '')) AS desc
+                               ) AS promo_desc_trsf
+                                    LEFT OUTER JOIN ret_promo AS default_ret_promo
+                                                    ON (product."retailerId" = default_ret_promo."retailerId" AND
+                                                        default_ret_promo."promotionMechanicId" = 3)
+                                    LEFT OUTER JOIN ret_promo
+                                                    ON (product."retailerId" = ret_promo."retailerId" AND
+                                                        CASE
+                                                            WHEN ret_promo."promotionMechanicId" IS NULL THEN FALSE
+                                                            WHEN LOWER(ret_promo."promotionMechanicName") =
+                                                                 COALESCE(promo.mechanic, '') THEN TRUE
+                                                            WHEN ret_promo.regexp IS NULL OR LENGTH(ret_promo.regexp) = 0
+                                                                THEN FALSE
+                                                            WHEN ret_promo."promotionMechanicName" = 'Multibuy' AND
+                                                                 promo_desc_trsf.desc ~ '(\d+\/\d+)'
+                                                                THEN FALSE
+                                                            ELSE
+                                                                promo_desc_trsf.desc ~ ret_promo.regexp
+                                                            END
+                                                        )),
+         promo_price_calc AS (SELECT "coreProductId",
+                                     description,
+                                     "promoId",
+                                     "retailerPromotionId",
+                                     "startDate",
+                                     "endDate",
+                                     "promotionMechanicName",
+                                     promo_indx,
+                                     price_calc."promotedPrice",
+                                     price_calc."shelfPrice",
+                                     ROW_NUMBER()
+                                     OVER (PARTITION BY "coreProductId" ORDER BY price_calc."promotedPrice" ) AS promo_price_order
+                              FROM product_promo
+                                       CROSS JOIN LATERAL (SELECT CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy'
+                                                                          THEN calculateMultibuyPrice(
+                                                                              description,
+                                                                              "promotedPrice")
+                                                                      ELSE
+                                                                          "productPrice"
+                                                                      END AS "promotedPrice",
+                                                                  CASE
+                                                                      WHEN "promotionMechanicName" = 'Multibuy'
+                                                                          THEN "shelfPrice"
+                                                                      WHEN NOT (
+                                                                          "sourceType" = 'tesco' AND
+                                                                          LOWER(description) ~
+                                                                          'clubcard price')
+                                                                          THEN
+                                                                          "productPrice"
+                                                                      ELSE
+                                                                          "shelfPrice"
+                                                                      END AS "shelfPrice") AS price_calc
+                              WHERE rownum = 1 -- use only the first record, as "let promo = retailerPromotions.find()" would return only the first one
+         ),
+
+         prod_prev_promo AS (SELECT *
+                             FROM last_product_status
+                                      INNER JOIN promotions USING ("productId")),
+         upd_product_promo AS (SELECT promo."coreProductId",
+                                      MAX(promo."promotedPrice") FILTER (WHERE promo.promo_price_order = 1) AS "promotedPrice",
+                                      MAX(promo."shelfPrice") FILTER (WHERE promo.promo_price_order = 1)    AS "shelfPrice",
+                                      ARRAY_AGG(DISTINCT (COALESCE(prev_promo."promoId", promo."promoId"),
+                                                          promo."retailerPromotionId",
+                                                          COALESCE(prev_promo."startDate", promo."startDate"),
+                                                          promo."endDate",
+                                                          promo.description,
+                                                          promo."promotionMechanicName")::staging.t_promotion
+                                          --          ORDER BY promo.promo_indx
+                                      )                                                                     AS promotions
+                               FROM promo_price_calc AS promo
+                                        LEFT OUTER JOIN prod_prev_promo AS prev_promo
+                                                        ON (prev_promo."coreProductId" = promo."coreProductId" AND
+                                                            prev_promo.description = promo.description)
+                               GROUP BY 1)
+    UPDATE tmp_product
+    SET promotions      = upd_product_promo.promotions,
+        "promotedPrice" = upd_product_promo."promotedPrice",
+        "shelfPrice"    = upd_product_promo."shelfPrice"
+    FROM upd_product_promo
+    WHERE tmp_product."coreProductId" = upd_product_promo."coreProductId";
 
 
     UPDATE tmp_product

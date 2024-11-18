@@ -92,8 +92,10 @@ CREATE UNIQUE INDEX product_status_history_productid_uindex
     ON staging.product_status_history ("productId"); --completed in 3 m 19 s 17 ms
 
 
-DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional"; -- [2024-11-16 13:01:45] completed in 61 ms
-
+DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
+-- [2024-11-16 13:01:45] completed in 61 ms
+/*
+-- original script
 CREATE TABLE staging."migstatus_productStatuses_additional" AS
 WITH status AS (SELECT "productStatuses".*
                 FROM "productStatuses"
@@ -105,6 +107,31 @@ SELECT status.*,
        date::date
 FROM status
          INNER JOIN products ON (products.id = status."productId"); -- 2,828,629 rows affected in 6 m 17 s 129 ms
+*/
+CREATE TABLE staging."migstatus_productStatuses_all" AS
+SELECT *
+FROM "productStatuses"
+         INNER JOIN (SELECT id AS "productId", "retailerId", "coreProductId", "date"::date FROM products) AS products
+                    USING ("productId");
+
+CREATE UNIQUE INDEX migstatus_migstatus_productStatuses_all_productid_uindex
+    ON staging."migstatus_productStatuses_all" ("productId");
+/*
+CREATE INDEX migstatus_migstatus_productStatuses_all_productid_addindex
+    ON staging."migstatus_productStatuses_all" ("retailerId",
+                                      "coreProductId",
+                                      date);
+CREATE INDEX migstatus_migstatus_productStatuses_all_productid_statusindex
+    ON staging."migstatus_productStatuses_all" (status);
+*/
+
+CREATE TABLE staging."migstatus_productStatuses_additional" AS
+SELECT "productStatuses".*
+FROM staging."migstatus_productStatuses_all" AS "productStatuses"
+         LEFT OUTER JOIN staging.product_status_history USING ("productId")
+WHERE product_status_history."productId" IS NULL;
+-- 2,945,110 rows affected in 12 m 24 s 117 ms
+
 
 CREATE UNIQUE INDEX migstatus_productStatuses_additional_productid_uindex
     ON staging."migstatus_productStatuses_additional" ("productId");
@@ -167,6 +194,7 @@ ON CONFLICT ("retailerId", "coreProductId", date)
     SET "productId"=excluded."productId"
 WHERE product_status_history."productId" IS NULL;
 --2,357,894 rows affected in 5 m 21 s 290 ms
+--2,433,337 rows affected in 18 m 56 s 768 ms
 --  AND product_status_history.status = 'De-listed' -- implicitly, only de-listed have null "productId"
 
 /*
@@ -249,15 +277,19 @@ SELECT NEXTVAL('products_id_seq'::regclass) AS id,
        "priceMatch",
        "priceLock",
        "isNpd",
-       NULL                                 AS load_id
+       NULL::integer                        AS load_id
 FROM products
-         INNER JOIN ins_prod_selection USING (id); -- 3,310,580 rows affected in 27 m 3 s 761 ms
-
+         INNER JOIN ins_prod_selection USING (id);
+-- 3,310,580 rows affected in 27 m 3 s 761 ms
+--2,752,620 rows affected in 1 h 3 m 18 s 404 ms
 
 INSERT
 INTO products
 SELECT*
-FROM staging.migstatus_ins_products; --3,310,580 rows affected in 31 m 23 s 196 ms
+FROM staging.migstatus_ins_products;
+--3,310,580 rows affected in 31 m 23 s 196 ms
+--2,752,620 rows affected in 45 m 57 s 832 ms
+
 
 UPDATE staging.product_status_history AS history
 SET "productId"=ins_products.id
@@ -265,13 +297,28 @@ FROM staging.migstatus_ins_products AS ins_products
 WHERE history."retailerId" = ins_products."retailerId"
   AND history."coreProductId" = ins_products."coreProductId"
   AND history.date = ins_products.date;
-
+-- 2,752,620 rows affected in 9 m 4 s 600 ms
+/*
+[2024-11-18 11:13:14] completed in 83 ms
+brandnudge-dev.public> CREATE TABLE staging."productStatuses" AS
+                       SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regclass)) AS id,
+                              "productId",
+                              product_status_history.status,
+                              "productStatuses".screenshot,
+                              COALESCE("productStatuses"."createdAt", CURRENT_TIMESTAMP)                    AS "createdAt",
+                              COALESCE("productStatuses"."updatedAt", CURRENT_TIMESTAMP)                    AS "updatedAt",
+                              "productStatuses".load_id
+                       FROM staging.product_status_history
+                                LEFT OUTER JOIN public."productStatuses" USING ("productId")
+[2024-11-18 11:26:43] An I/O error occurred while sending to the backend.
+*/
 /*
 3 minutes
 ============================
 [2024-11-14 18:49:00] [23505] ERROR: duplicate key value violates unique constraint "products_sourceid_retailerid_dateid_key"
 [2024-11-14 18:49:00] Detail: Key ("sourceId", "retailerId", "dateId")=(7428221, 3, 162) already exists.
 */
+
 DROP TABLE IF EXISTS staging."productStatuses";
 CREATE TABLE staging."productStatuses" AS
 SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regclass)) AS id,
@@ -284,6 +331,7 @@ SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regcla
 FROM staging.product_status_history
          LEFT OUTER JOIN public."productStatuses" USING ("productId");
 --278,253,630 rows affected in 22 m 39 s 456 ms
+--288,009,947 rows affected in 22 m 54 s 758 ms
 
 /*
 /* Add additional records with statsus !='De-listed' which were missing in the "productStatuses"  */
@@ -319,6 +367,8 @@ CREATE UNIQUE INDEX "productStatuses_pkey"
 CREATE UNIQUE INDEX productstatuses_productid_uindex
     ON public."productStatuses" ("productId");
 
+/*
+-- no longer needed in the etl
 
 DROP TABLE IF EXISTS staging.PRODUCT_STATUS;
 CREATE TABLE staging.PRODUCT_STATUS AS
@@ -337,3 +387,4 @@ ALTER TABLE staging.PRODUCT_STATUS
     ADD CONSTRAINT PRODUCT_STATUS_pk
         PRIMARY KEY ("retailerId",
                      "coreProductId");
+*/

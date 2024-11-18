@@ -181,7 +181,7 @@ SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id in (3,4);  --4
+WHERE id::text in ('100');--133,134
 
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
