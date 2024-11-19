@@ -148,6 +148,37 @@ FROM debug_errors
          LEFT OUTER JOIN load
                          USING (load_id)
 ORDER BY error_id;
+
+SELECT id,
+       load_id,
+       sql_state,
+       message,
+       detail,
+       hint,
+       context,
+       --fetched_data,
+       flag,
+       created_at,
+       ROUND(LENGTH(fetched_data::text) / 1024 / 1024 ::numeric, 2) AS "Payload size (in MB)",
+       JSON_ARRAY_LENGTH(fetched_data #> '{products}')              AS product_count,
+       fetched_data #> '{retailer, name}'                           AS retailer,
+       flag
+FROM staging.debug_errors;
+
+SELECT id,
+       --data,
+       flag,
+       run_at,
+       dd_date,
+       dd_retailer,
+       dd_date_id,
+       dd_source_type,
+       execution_time,
+       ROUND(LENGTH(data::text) / 1024 / 1024 ::numeric, 2) AS "Payload size (in MB)",
+       JSON_ARRAY_LENGTH(data #> '{products}')              AS product_count,
+       data #> '{retailer, name}'                           AS retailer
+FROM staging.load;
+
 /*
 WITH load AS (SELECT id     AS debug_test_run_id,
                      data,
@@ -179,9 +210,17 @@ WHERE "retailerId" = 1337
  */
 SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
+SHOW WORK_MEM;
+
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id::text in ('100');--133,134
+WHERE id = 100;
+/*
+load id for error 100 = 216
+[2024-11-19 20:14:29] 1 row retrieved starting from 1 in 1 h 35 m 4 s 49 ms (execution: 1 h 35 m 3 s 805 ms, fetching: 244 ms)
+*/
+--133,134, tesco: 100, 201
+-- '209','210' FROM staging.load TO BE RELOADED JUST IN CASE!!
 
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
@@ -189,7 +228,7 @@ WHERE id = 299;
 
 DELETE
 FROM staging.debug_errors
-WHERE id >= 15;
+WHERE id NOT IN (100, 201);
 
 SELECT *
 FROM staging.debug_errors
@@ -211,6 +250,10 @@ SELECT *
 FROM products
 WHERE load_id = 67;
 
-select * from staging.debug_tmp_product_pp where load_id=301
+SELECT *
+FROM staging.debug_tmp_product_pp
+WHERE load_id = 301
 
-select data->'retailer', data#>'{products,0,sourceType}' from staging.load where id=303;
+SELECT data -> 'retailer', data #> '{products,0,sourceType}'
+FROM staging.load
+WHERE id = 303;
