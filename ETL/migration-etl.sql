@@ -793,7 +793,15 @@ BEGIN
         INTO dd_date_id;
 
     CREATE TEMPORARY TABLE last_product_status ON COMMIT DROP AS
-    WITH product_status AS (SELECT *,
+    SELECT DISTINCT ON ("coreProductId") "coreProductId",
+                                         date,
+                                         status,
+                                         "productId"
+    FROM staging.product_status_history
+    WHERE "retailerId" = dd_retailer.id
+      AND date < dd_date
+    ORDER BY "coreProductId", date DESC;
+    /* WITH product_status AS (SELECT *,
                                    ROW_NUMBER()
                                    OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
                             FROM staging.product_status_history
@@ -802,6 +810,7 @@ BEGIN
     SELECT "coreProductId", date, status, "productId"
     FROM product_status
     WHERE rownum = 1;
+    */
 
     SELECT MAX(date)
     INTO dd_retailer_last_load_date
