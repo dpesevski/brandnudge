@@ -162,6 +162,7 @@ SELECT id,
        ROUND(LENGTH(fetched_data::text) / 1024 / 1024 ::numeric, 2) AS "Payload size (in MB)",
        JSON_ARRAY_LENGTH(fetched_data #> '{products}')              AS product_count,
        fetched_data #> '{retailer, name}'                           AS retailer,
+       fetched_data #> '{products,0, date}'                         AS load_date,
        flag
 FROM staging.debug_errors;
 
@@ -218,6 +219,18 @@ WHERE id = 100;
 /*
 load id for error 100 = 216
 [2024-11-19 20:14:29] 1 row retrieved starting from 1 in 1 h 35 m 4 s 49 ms (execution: 1 h 35 m 3 s 805 ms, fetching: 244 ms)
+
+[2024-11-20 13:48:52] 1 row retrieved starting from 1 in 1 h 55 m 9 s 401 ms (execution: 1 h 55 m 9 s 252 ms, fetching: 149 ms)
+
++---+
+|id |
++---+
+|216|
+|217| -- from today
+|218|-- from today
++---+
+
+
 */
 --133,134, tesco: 100, 201
 -- '209','210' FROM staging.load TO BE RELOADED JUST IN CASE!!
@@ -252,8 +265,8 @@ WHERE load_id = 67;
 
 SELECT *
 FROM staging.debug_tmp_product_pp
-WHERE load_id = 301
+WHERE load_id = 216;
 
-SELECT data -> 'retailer', data #> '{products,0,sourceType}'
+SELECT *--data -> 'retailer', data #> '{products,0,sourceType}'
 FROM staging.load
-WHERE id = 303;
+WHERE id = 216;
