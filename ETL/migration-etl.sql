@@ -1932,7 +1932,6 @@ DECLARE
     dd_date                    date;
     dd_date_id                 integer;
     dd_retailer                retailers;
-    dd_retailer_last_load_date date;
 BEGIN
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
