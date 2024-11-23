@@ -171,14 +171,15 @@ SELECT id,
        flag,
        run_at,
        dd_date,
-       dd_retailer,
+       -- dd_retailer,
        dd_date_id,
-       dd_source_type,
+       -- dd_source_type,
        execution_time,
        ROUND(LENGTH(data::text) / 1024 / 1024 ::numeric, 2) AS "Payload size (in MB)",
        JSON_ARRAY_LENGTH(data #> '{products}')              AS product_count,
        data #> '{retailer, name}'                           AS retailer
-FROM staging.load;
+FROM staging.load
+ORDER BY id DESC;
 
 /*
 WITH load AS (SELECT id     AS debug_test_run_id,
@@ -215,13 +216,23 @@ SHOW WORK_MEM;
 
 SELECT staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id = 100;
+WHERE id = 201;
 /*
+223
+[2024-11-20 21:43:00] 1 row retrieved starting from 1 in 2 m 59 s 809 ms (execution: 2 m 59 s 513 ms, fetching: 296 ms)
+
+
+225
+[2024-11-20 22:30:18] 1 row retrieved starting from 1 in 2 m 8 s 93 ms (execution: 2 m 7 s 770 ms, fetching: 323 ms)
+
+
 load id for error 100 = 216
 [2024-11-19 20:14:29] 1 row retrieved starting from 1 in 1 h 35 m 4 s 49 ms (execution: 1 h 35 m 3 s 805 ms, fetching: 244 ms)
 
 [2024-11-20 13:48:52] 1 row retrieved starting from 1 in 1 h 55 m 9 s 401 ms (execution: 1 h 55 m 9 s 252 ms, fetching: 149 ms)
 
+-221
+[2024-11-20 18:31:48] 1 row retrieved starting from 1 in 1 h 34 m 38 s 190 ms (execution: 1 h 34 m 37 s 927 ms, fetching: 263 ms)
 +---+
 |id |
 +---+
@@ -237,7 +248,7 @@ load id for error 100 = 216
 
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
-WHERE id = 299;
+WHERE id = 215;--226
 
 DELETE
 FROM staging.debug_errors
@@ -270,3 +281,9 @@ WHERE load_id = 216;
 SELECT *--data -> 'retailer', data #> '{products,0,sourceType}'
 FROM staging.load
 WHERE id = 216;
+
+
+
+SELECT count(*)
+FROM promotions
+WHERE load_id = 225

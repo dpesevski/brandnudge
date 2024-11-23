@@ -217,28 +217,32 @@ CREATE TABLE test.retailer
 
 
 INSERT INTO test.retailer ("retailerId", flag, is_pp)
-VALUES  (807, 'create-products-pp', true), --coles
+VALUES  (1, 'create-products-pp', true), --tesco
+       (807, 'create-products-pp', true), --coles
         (972, 'create-products-pp', true); --woolworths;
 
 SELECT *
 FROM dates
-WHERE id >= 28528
+WHERE id >= 29551
 ORDER BY "createdAt" DESC NULLS LAST;
 
 SELECT *
 FROM prod_fdw.dates
-WHERE id >=28528
+WHERE id >=29551
 ORDER BY "createdAt" DESC NULLS LAST;
 
 */
-SET WORK_MEM = '2GB';
+SET work_mem = '4GB';
+SET max_parallel_workers_per_gather = 4;
+SHOW WORK_MEM;
+
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
 SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >= 29551
+                     WHERE id IN (29749)-- ( 29650, 29584)
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -250,7 +254,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >= 29551
+                     WHERE id IN (29812)--( 29792, 29787)
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -327,6 +331,8 @@ WHERE "dateId" > 24646;
 
 /*  TESTS   */
 
+SELECT DISTINCT dates_date, "retailerId"
+FROM test.tstg_products;
 
 /*  T01:  product count prod <-> staging    */
 WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
@@ -348,6 +354,12 @@ FROM prod_cnt
                                    INNER JOIN test.retailer ON (retailer."retailerId" = retailers.id)) AS retailer
                          USING ("retailerId")
 ORDER BY "retailerId";
+
+SELECT "retailerId", promotions, COUNT(*)
+FROM products
+         INNER JOIN "productStatuses" ON ("productStatuses"."productId" = products.id)
+WHERE "dateId" = 29792
+GROUP BY 1, 2;
 
 
 /*  T02:  missing products in prod    */

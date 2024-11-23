@@ -801,20 +801,6 @@ BEGIN
     WHERE "retailerId" = dd_retailer.id
       AND date < dd_date
     ORDER BY "coreProductId", date DESC;
-    /* WITH product_status AS (SELECT *,
-                                   ROW_NUMBER()
-                                   OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
-                            FROM staging.product_status_history
-                            WHERE "retailerId" = dd_retailer.id
-                              AND date < dd_date)
-    SELECT "coreProductId", date, status, "productId"
-    FROM product_status
-    WHERE rownum = 1;
-    */
-
-    SELECT MAX(date)
-    INTO dd_retailer_last_load_date
-    FROM last_product_status;
 
     INSERT INTO staging.load(id, data,
                              flag,
@@ -827,6 +813,104 @@ BEGIN
            dd_date,
            dd_retailer,
            dd_date_id;
+
+    DROP TABLE IF EXISTS tmp_product_pp_dd_products;
+    CREATE TEMPORARY TABLE tmp_product_pp_dd_products ON COMMIT DROP AS
+    WITH tmp_daily_data_pp AS (SELECT dd_date                                               AS date,
+                                      product."countryCode",
+                                      product."currency",
+                                      product."sourceId",
+                                      product.ean,
+                                      product."brand",
+                                      product."title",
+                                      fn_to_float(product."shelfPrice")                     AS "shelfPrice",
+                                      fn_to_float(product."wasPrice")                       AS "wasPrice",
+                                      fn_to_float(product."cardPrice")                      AS "cardPrice",
+                                      fn_to_boolean(product."inStock")                      AS "inStock",
+                                      fn_to_boolean(product."onPromo")                      AS "onPromo",
+                                      COALESCE(product."promoData",
+                                               ARRAY []::staging.t_promotion_pp[])          AS "promoData",
+                                      COALESCE(product."skuURL", '')                        AS href,
+                                      product."imageURL",
+
+                                      product."newCoreImage",
+                                      COALESCE(fn_to_boolean(product."bundled"), FALSE)     AS "bundled",
+                                      COALESCE(fn_to_boolean(product."masterSku"), FALSE)   AS "productOptions",
+                                      LEFT(shop, 255)                                       AS shop,
+                                      LEFT("amazonShop", 255)                               AS "amazonShop",
+                                      LEFT(choice, 255)                                     AS choice,
+                                      LEFT("amazonChoice", 255)                             AS "amazonChoice",
+                                      "lowStock",
+                                      LEFT("sellParty", 255)                                AS "sellParty",
+                                      LEFT("amazonSellParty", 255)                          AS "amazonSellParty",
+                                      LEFT(sell, 255)                                       AS sell,
+                                      LEFT("fulfilParty", 255)                              AS "fulfilParty",
+                                      LEFT("amazonFulfilParty", 255)                        AS "amazonFulfilParty",
+                                      LEFT("amazonSell", 255)                               AS "amazonSell",
+                                      marketplace,
+                                      "marketplaceData",
+                                      "priceMatchDescription",
+                                      "priceMatch",
+                                      "priceLock",
+                                      "isNpd",
+                                      LEFT(product.size, 255)                               AS size,
+                                      LEFT("sizeUnit", 255)                                 AS "sizeUnit",
+                                      LEFT("pricePerWeight", 255)                           AS "pricePerWeight",
+                                      ROW_NUMBER()
+                                      OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
+                               FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
+                                                            value #> '{products}') AS product)
+    SELECT COALESCE("wasPrice", "shelfPrice")        AS "originalPrice",
+           "shelfPrice"                              AS "productPrice",
+           "shelfPrice",
+           COALESCE("brand", '')                     AS "productBrand",
+
+
+           COALESCE("title", '')                     AS "productTitle",
+           COALESCE("imageURL", '')                  AS "productImage",
+           COALESCE("newCoreImage", '')              AS "newCoreImage",
+
+           COALESCE("inStock", TRUE)                 AS "productInStock",
+
+           date,
+           "countryCode",
+           "currency",
+           CASE WHEN ean = '' THEN NULL ELSE ean END AS ean,
+           "brand",
+           "title",
+           href,
+
+           "sourceId",
+           "cardPrice",
+           "bundled",
+           "productOptions",
+           "promoData",
+           "onPromo",
+
+           shop,
+           "amazonShop",
+           choice,
+           "amazonChoice",
+           "lowStock",
+           "sellParty",
+           "amazonSellParty",
+           sell,
+           "fulfilParty",
+           "amazonFulfilParty",
+           "amazonSell",
+           marketplace,
+           "marketplaceData",
+           "priceMatchDescription",
+           "priceMatch",
+           "priceLock",
+           "isNpd",
+           size,
+           "sizeUnit",
+           "pricePerWeight",
+           ROW_NUMBER() OVER ()                      AS index
+    FROM tmp_daily_data_pp
+    WHERE rownum = 1;
+
     DROP TABLE IF EXISTS tmp_product_pp;
     CREATE TEMPORARY TABLE tmp_product_pp ON COMMIT DROP AS
     WITH /*prod_brand AS (SELECT id                        AS "brandId",
@@ -854,102 +938,7 @@ BEGIN
                                                     ON (
                                                         "coreRetailers"."retailerId" = dd_retailer.id AND
                                                         "coreRetailerSources"."coreRetailerId" = "coreRetailers".id
-                                                        )),
-
-        tmp_daily_data_pp AS (SELECT dd_date                                               AS date,
-                                     product."countryCode",
-                                     product."currency",
-                                     product."sourceId",
-                                     product.ean,
-                                     product."brand",
-                                     product."title",
-                                     fn_to_float(product."shelfPrice")                     AS "shelfPrice",
-                                     fn_to_float(product."wasPrice")                       AS "wasPrice",
-                                     fn_to_float(product."cardPrice")                      AS "cardPrice",
-                                     fn_to_boolean(product."inStock")                      AS "inStock",
-                                     fn_to_boolean(product."onPromo")                      AS "onPromo",
-                                     COALESCE(product."promoData",
-                                              ARRAY []::staging.t_promotion_pp[])          AS "promoData",
-                                     COALESCE(product."skuURL", '')                        AS href,
-                                     product."imageURL",
-
-                                     product."newCoreImage",
-                                     COALESCE(fn_to_boolean(product."bundled"), FALSE)     AS "bundled",
-                                     COALESCE(fn_to_boolean(product."masterSku"), FALSE)   AS "productOptions",
-                                     LEFT(shop, 255)                                       AS shop,
-                                     LEFT("amazonShop", 255)                               AS "amazonShop",
-                                     LEFT(choice, 255)                                     AS choice,
-                                     LEFT("amazonChoice", 255)                             AS "amazonChoice",
-                                     "lowStock",
-                                     LEFT("sellParty", 255)                                AS "sellParty",
-                                     LEFT("amazonSellParty", 255)                          AS "amazonSellParty",
-                                     LEFT(sell, 255)                                       AS sell,
-                                     LEFT("fulfilParty", 255)                              AS "fulfilParty",
-                                     LEFT("amazonFulfilParty", 255)                        AS "amazonFulfilParty",
-                                     LEFT("amazonSell", 255)                               AS "amazonSell",
-                                     marketplace,
-                                     "marketplaceData",
-                                     "priceMatchDescription",
-                                     "priceMatch",
-                                     "priceLock",
-                                     "isNpd",
-                                     LEFT(product.size, 255)                               AS size,
-                                     LEFT("sizeUnit", 255)                                 AS "sizeUnit",
-                                     LEFT("pricePerWeight", 255)                           AS "pricePerWeight",
-                                     ROW_NUMBER()
-                                     OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
-                              FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
-                                                           value #> '{products}') AS product),
-        dd_products AS (SELECT COALESCE("wasPrice", "shelfPrice")        AS "originalPrice",
-                               "shelfPrice"                              AS "productPrice",
-                               "shelfPrice",
-                               COALESCE("brand", '')                     AS "productBrand",
-
-
-                               COALESCE("title", '')                     AS "productTitle",
-                               COALESCE("imageURL", '')                  AS "productImage",
-                               COALESCE("newCoreImage", '')              AS "newCoreImage",
-
-                               COALESCE("inStock", TRUE)                 AS "productInStock",
-
-                               date,
-                               "countryCode",
-                               "currency",
-                               CASE WHEN ean = '' THEN NULL ELSE ean END AS ean,
-                               "brand",
-                               "title",
-                               href,
-
-                               "sourceId",
-                               "cardPrice",
-                               "bundled",
-                               "productOptions",
-                               "promoData",
-                               "onPromo",
-
-                               shop,
-                               "amazonShop",
-                               choice,
-                               "amazonChoice",
-                               "lowStock",
-                               "sellParty",
-                               "amazonSellParty",
-                               sell,
-                               "fulfilParty",
-                               "amazonFulfilParty",
-                               "amazonSell",
-                               marketplace,
-                               "marketplaceData",
-                               "priceMatchDescription",
-                               "priceMatch",
-                               "priceLock",
-                               "isNpd",
-                               size,
-                               "sizeUnit",
-                               "pricePerWeight",
-                               ROW_NUMBER() OVER ()                      AS index
-                        FROM tmp_daily_data_pp
-                        WHERE rownum = 1)
+                                                        ))
 
     SELECT NULL::integer                                                       AS id,
            dd_retailer.name                                                    AS "sourceType",
@@ -1024,7 +1013,7 @@ BEGIN
            COALESCE(trsf_promo.promotions, ARRAY []::staging.t_promotion_mb[]) AS promotions,
            dd_products."pricePerWeight",
            load_retailer_data_pp.load_id                                       AS load_id
-    FROM dd_products
+    FROM tmp_product_pp_dd_products AS dd_products
              CROSS JOIN LATERAL ( SELECT CASE
                                              /*
                                                  Matt (5/13/2024) :https://brand-nudge-group.slack.com/archives/C068Y51TS6L/p1715604955904309?thread_ts=1715603977.153229&cid=C068Y51TS6L
@@ -1225,6 +1214,7 @@ BEGIN
                                            USING ("promotionMechanicId")),
          product_promo AS (SELECT product."retailerId",
                                   "sourceId",
+                                  "coreProductId",
                                   promo_indx,
                                   lat_dates."startDate",
                                   lat_dates."endDate",
@@ -1306,6 +1296,7 @@ BEGIN
                                                             END
                                                         )),
          promo_price_calc AS (SELECT "sourceId",
+                                     "coreProductId",
                                      description,
                                      "multibuyPrice",
                                      "promoId",
@@ -1378,7 +1369,10 @@ BEGIN
                             AND last_product_status.status != 'De-listed'),
          delisted_product AS (SELECT *
                               FROM products
-                                       INNER JOIN delisted_ids USING (id))
+                                       INNER JOIN delisted_ids USING (id)
+                                       LEFT OUTER JOIN (SELECT "sourceId" FROM tmp_product_pp) AS listed_products
+                                                       USING ("sourceId")
+                              WHERE listed_products."sourceId" IS NULL)
     INSERT
     INTO tmp_product_pp ("sourceType",
                          ean,
@@ -1465,145 +1459,6 @@ BEGIN
            NULL        AS load_id,
            'De-listed' AS status
     FROM delisted_product;
-
-
-    /*  TODO: REMOVE NEXT STATEMENTS TILL RETURN */
-    /* INSERT INTO staging.debug_tmp_product_pp (load_id,
-                                               id,
-                                               "sourceType",
-                                               ean,
-                                               "promotionDescription",
-                                               features,
-                                               date,
-                                               "sourceId",
-                                               "productBrand",
-                                               "productTitle",
-                                               "productImage",
-                                               "newCoreImage",
-                                               "secondaryImages",
-                                               "productDescription",
-                                               "productInfo",
-                                               "promotedPrice",
-                                               "productInStock",
-                                               "productInListing",
-                                               "reviewsCount",
-                                               "reviewsStars",
-                                               "eposId",
-                                               multibuy,
-                                               "coreProductId",
-                                               "retailerId",
-                                               "createdAt",
-                                               "updatedAt",
-                                               "imageId",
-                                               size,
-                                               "pricePerWeight",
-                                               href,
-                                               nutritional,
-                                               "basePrice",
-                                               "shelfPrice",
-                                               "productTitleDetail",
-                                               "sizeUnit",
-                                               "dateId",
-                                               "countryCode",
-                                               currency,
-                                               "cardPrice",
-                                               "onPromo",
-                                               bundled,
-                                               "originalPrice",
-                                               "productPrice",
-                                               status,
-                                               "productOptions",
-                                               shop,
-                                               "amazonShop",
-                                               choice,
-                                               "amazonChoice",
-                                               "lowStock",
-                                               "sellParty",
-                                               "amazonSellParty",
-                                               sell,
-                                               "fulfilParty",
-                                               "amazonFulfilParty",
-                                               "amazonSell",
-                                               marketplace,
-                                               "marketplaceData",
-                                               "priceMatchDescription",
-                                               "priceMatch",
-                                               "priceLock",
-                                               "isNpd",
-                                               "eanIssues",
-                                               screenshot,
-                                               "brandId",
-                                               "EANs",
-                                               promotions)
-     SELECT tmp_product_pp.load_id,
-            id,
-            "sourceType",
-            ean,
-            "promotionDescription",
-            features,
-            date,
-            "sourceId",
-            "productBrand",
-            "productTitle",
-            "productImage",
-            "newCoreImage",
-            "secondaryImages",
-            "productDescription",
-            "productInfo",
-            "promotedPrice",
-            "productInStock",
-            "productInListing",
-            "reviewsCount",
-            "reviewsStars",
-            "eposId",
-            multibuy,
-            "coreProductId",
-            "retailerId",
-            "createdAt",
-            "updatedAt",
-            "imageId",
-            size,
-            "pricePerWeight",
-            href,
-            nutritional,
-            "basePrice",
-            "shelfPrice",
-            "productTitleDetail",
-            "sizeUnit",
-            "dateId",
-            "countryCode",
-            currency,
-            "cardPrice",
-            "onPromo",
-            bundled,
-            "originalPrice",
-            "productPrice",
-            status,
-            "productOptions",
-            shop,
-            "amazonShop",
-            choice,
-            "amazonChoice",
-            "lowStock",
-            "sellParty",
-            "amazonSellParty",
-            sell,
-            "fulfilParty",
-            "amazonFulfilParty",
-            "amazonSell",
-            marketplace,
-            "marketplaceData",
-            "priceMatchDescription",
-            "priceMatch",
-            "priceLock",
-            "isNpd",
-            "eanIssues",
-            screenshot,
-            "brandId",
-            "EANs",
-            promotions
-     FROM tmp_product_pp;
-     RETURN;*/
 
     /*  createProductBy    */
     WITH ins_products AS (
@@ -1708,6 +1563,7 @@ BEGIN
                                                         REPLACE("productImage",
                                                                 'https://groceries.morrisons.comhttps://groceries.morrisons.com',
                                                                 'https://groceries.morrisons.com')
+                                                    ELSE "productImage"
                                                     END AS "productImage"
                 ) AS new_img
             ON CONFLICT ("sourceId", "retailerId", "dateId")
@@ -2061,7 +1917,6 @@ BEGIN
     SELECT *
     FROM debug_coreRetailerDates;
 
-    DROP TABLE IF EXISTS last_product_status;
     --  UPDATE SET "updatedAt" = excluded."updatedAt";
 
     RETURN;
@@ -2109,6 +1964,7 @@ BEGIN
 
     dd_date := value #> '{products,0,date}';
 
+    DROP TABLE IF EXISTS last_product_status;
     CREATE TEMPORARY TABLE last_product_status ON COMMIT DROP AS
     WITH product_status AS (SELECT *,
                                    ROW_NUMBER()
@@ -2119,10 +1975,6 @@ BEGIN
     SELECT "coreProductId", date, status, "productId"
     FROM product_status
     WHERE rownum = 1;
-
-    SELECT MAX(date)
-    INTO dd_retailer_last_load_date
-    FROM last_product_status;
 
     DROP TABLE IF EXISTS tmp_daily_data;
     CREATE TEMPORARY TABLE tmp_daily_data ON COMMIT DROP AS
