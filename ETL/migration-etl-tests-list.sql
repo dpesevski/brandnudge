@@ -242,7 +242,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id IN (29749)-- ( 29650, 29584)
+                     WHERE id >=29716
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -254,7 +254,7 @@ SELECT products.*, dates_date, NULL::json AS promo_data
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id IN (29812)--( 29792, 29787)
+                     WHERE id >=29805
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -331,9 +331,6 @@ WHERE "dateId" > 24646;
 
 /*  TESTS   */
 
-SELECT DISTINCT dates_date, "retailerId"
-FROM test.tstg_products;
-
 /*  T01:  product count prod <-> staging    */
 WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
               FROM test.tprd_products),
@@ -355,13 +352,11 @@ FROM prod_cnt
                          USING ("retailerId")
 ORDER BY "retailerId";
 
-SELECT "retailerId", promotions, COUNT(*)
-FROM products
-         INNER JOIN "productStatuses" ON ("productStatuses"."productId" = products.id)
-WHERE "dateId" = 29792
-GROUP BY 1, 2;
-
-
+---118693
+SELECT "retailerId", count(*)
+                 FROM test.tstg_products inner join "productStatuses" on ("productStatuses"."productId"=tstg_products.id)
+where status='De-listed'
+GROUP BY "retailerId" ;
 /*  T02:  missing products in prod    */
 SELECT staging.*
 FROM test.tstg_products AS staging
