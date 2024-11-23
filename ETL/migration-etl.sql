@@ -765,10 +765,9 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json, load_id int
 AS
 $$
 DECLARE
-    dd_date                    date;
-    dd_date_id                 integer;
-    dd_retailer                retailers;
-    dd_retailer_last_load_date date;
+    dd_date     date;
+    dd_date_id  integer;
+    dd_retailer retailers;
 BEGIN
 
     dd_date := value #> '{products,0,date}';
@@ -792,6 +791,7 @@ BEGIN
     RETURNING id
         INTO dd_date_id;
 
+    DROP TABLE IF EXISTS last_product_status;
     CREATE TEMPORARY TABLE last_product_status ON COMMIT DROP AS
     SELECT DISTINCT ON ("coreProductId") "coreProductId",
                                          date,
@@ -1917,8 +1917,6 @@ BEGIN
     SELECT *
     FROM debug_coreRetailerDates;
 
-    --  UPDATE SET "updatedAt" = excluded."updatedAt";
-
     RETURN;
 END ;
 $$;
@@ -1929,9 +1927,9 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_base(value json, load_id i
 AS
 $$
 DECLARE
-    dd_date                    date;
-    dd_date_id                 integer;
-    dd_retailer                retailers;
+    dd_date     date;
+    dd_date_id  integer;
+    dd_retailer retailers;
 BEGIN
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
