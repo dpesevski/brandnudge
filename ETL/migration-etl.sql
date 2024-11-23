@@ -739,7 +739,7 @@ BEGIN
     END IF;
 
     UPDATE staging.load
-    SET execution_time=1000 * (EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()) - EXTRACT(EPOCH FROM _start_ts))
+    SET execution_time=ROUND((EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()) - EXTRACT(EPOCH FROM _start_ts))::numeric, 2) -- in seconds
     WHERE id = _load_id;
 
     RETURN _load_id;
@@ -1456,7 +1456,7 @@ BEGIN
            "priceMatch",
            "priceLock",
            FALSE       AS "isNpd",
-           NULL        AS load_id,
+           load_retailer_data_pp.load_id                                       AS load_id,
            'De-listed' AS status
     FROM delisted_product;
 
@@ -1663,7 +1663,7 @@ BEGIN
                                               "brandId",
                                               "EANs",
                                               promotions)
-    SELECT tmp_product_pp.load_id,
+    SELECT load_retailer_data_pp.load_id,
            id,
            "sourceType",
            ean,

@@ -109,15 +109,15 @@ FROM staging.load;
 WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY load_id, "retailerId", "sourceType")
-SELECT id           AS load_id,
+SELECT id             AS load_id,
        --  fetched_data,
        "retailerId",
-       "sourceType" AS retailer_name,
+       "sourceType"   AS retailer_name,
        product_count,
        flag,
 --
        run_at,
-       execution_time,
+       execution_time,-- AS "execution time (in seconds)",
        dd_date
 FROM staging.load
          LEFT OUTER JOIN prod_cnt USING (id)
@@ -284,6 +284,6 @@ WHERE id = 216;
 
 
 
-SELECT count(*)
+SELECT COUNT(*)
 FROM promotions
 WHERE load_id = 225

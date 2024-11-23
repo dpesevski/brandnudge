@@ -238,27 +238,31 @@ SHOW WORK_MEM;
 
 DROP TABLE IF EXISTS test.tprd_products;
 CREATE TABLE IF NOT EXISTS test.tprd_products AS
-SELECT products.*, dates_date, NULL::json AS promo_data
+SELECT products.*, "productStatuses".status, dates_date
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id >=29716
+                     WHERE id > 29551 -->= 29716--
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
-         INNER JOIN test.retailer USING ("retailerId");
+         INNER JOIN test.retailer USING ("retailerId")
+         INNER JOIN prod_fdw."productStatuses" ON ("productStatuses"."productId" = products.id)
+;
 
 DROP TABLE IF EXISTS test.tstg_products;
 CREATE TABLE IF NOT EXISTS test.tstg_products AS
-SELECT products.*, dates_date, NULL::json AS promo_data
+SELECT products.*, "productStatuses".status, dates_date
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id >=29805
+                     WHERE id > 29551-->= 29805--
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
-         INNER JOIN test.retailer USING ("retailerId");
+         INNER JOIN test.retailer USING ("retailerId")
+         INNER JOIN "productStatuses" ON ("productStatuses"."productId" = products.id)
+;
 
 CREATE INDEX IF NOT EXISTS tprd_products_retailerId_date_sourceId_index
     ON test.tprd_products ("retailerId", dates_date, "sourceId");
@@ -353,10 +357,22 @@ FROM prod_cnt
 ORDER BY "retailerId";
 
 ---118693
-SELECT "retailerId", count(*)
-                 FROM test.tstg_products inner join "productStatuses" on ("productStatuses"."productId"=tstg_products.id)
-where status='De-listed'
-GROUP BY "retailerId" ;
+--  38107
+SELECT "retailerId", COUNT(*)
+FROM test.tstg_products
+WHERE status = 'De-listed'
+GROUP BY "retailerId";
+
+/*
+'De-listed'
++----------+-----+
+|retailerId|count|
++----------+-----+
+|1         |2033 | -29441
+|807       |579  |   -625
+|972       |1421 |  -1525
++----------+-----+
+*/
 /*  T02:  missing products in prod    */
 SELECT staging.*
 FROM test.tstg_products AS staging
@@ -365,7 +381,7 @@ FROM test.tstg_products AS staging
 WHERE prod.id IS NULL;
 
 /*  T03:  product differences in general attributes    */
-SELECT *
+SELECT staging.status, prod.status, staging.promotions , prod.promotions, *
 FROM test.tstg_products AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
@@ -462,7 +478,10 @@ WITH staging AS (SELECT tstg_products.*,
                         debug_tmp_product_pp.promotions AS promodata
                  FROM test.tstg_products
                           INNER JOIN staging.debug_tmp_product_pp USING (id))
-SELECT "retailerId",
+SELECT staging.status,
+       prod.status,
+
+       "retailerId",
        dates_date,
        "sourceId",
        staging.multibuy,
@@ -476,7 +495,10 @@ WHERE staging.multibuy != prod.multibuy
 ORDER BY staging."sourceId" DESC;
 
 /*  T08:  product differences in promotionDescription    */
-SELECT "retailerId",
+SELECT staging.status,
+       prod.status,
+       load_id,
+       "retailerId",
        dates_date,
        "sourceId",
        staging."promotionDescription" AS staging_promotionDescription,
@@ -489,7 +511,9 @@ WHERE staging."promotionDescription" != prod."promotionDescription"
 ORDER BY staging."sourceId" DESC;
 
 /*  T09:  product differences in href    */
-SELECT "retailerId",
+SELECT staging.status,
+       prod.status,
+       "retailerId",
        dates_date,
        "sourceId",
        load_id,
@@ -670,7 +694,9 @@ WHERE LOWER(staging.promo_data::text) != LOWER(prod.promo_data::text)
 ORDER BY staging."sourceId" DESC;
 
 /*  T15:  product differences in  productInStock   */
-SELECT "retailerId",
+SELECT staging.status,
+       prod.status,
+       "retailerId",
        dates_date,
        "sourceId",
        staging."productInStock",
@@ -694,3 +720,60 @@ FROM test.tstg_products AS staging
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productBrand" != prod."productBrand"
 ORDER BY staging."sourceId" DESC;
+
+
+SELECT "retailerId",
+       dates_date::date  AS load_date,
+       staging.status    AS status_in_staging,
+       COUNT(staging.id) AS recordcount_in_staging,
+       prod.status       AS status_in_prod,
+       COUNT(prod.id)    AS recordcount_in_prod
+FROM test.tstg_products AS staging
+         FULL OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE prod.id IS NULL
+   OR staging.id IS NULL
+GROUP BY 1, 2, 3, 5
+ORDER BY 1, 2;
+
+SELECT "sourceId", prod."coreProductId", *
+FROM test.tprd_products AS prod
+         LEFT OUTER JOIN test.tstg_products AS staging
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE staging.id IS NULL
+  AND prod.date::date = '2024-11-22';
+
+--266599236,507,1,2024-11-22 00:00:00.000000 +00:00
+
+SELECT *
+FROM staging.product_status_history
+WHERE "retailerId" = 1
+  AND "coreProductId" = 507
+ORDER BY date DESC;
+
+
+SELECT date, id, status
+FROM test.tprd_products
+WHERE "retailerId" = 1
+  AND "coreProductId" = 507
+ORDER BY date DESC;
+
+SELECT date::date, "productId", status
+FROM products
+         INNER JOIN "productStatuses" ON ("productStatuses"."productId" = products.id)
+WHERE "retailerId" = 1
+  AND "coreProductId" = 507
+ORDER BY date DESC;
+
+
+SELECT date::date, "productId", status
+FROM prod_fdw.products
+         INNER JOIN prod_fdw."productStatuses" ON ("productStatuses"."productId" = products.id)
+WHERE "retailerId" = 1
+  AND "coreProductId" = 507
+ORDER BY date DESC;
+
+
+
+
+
