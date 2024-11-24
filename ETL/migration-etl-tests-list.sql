@@ -242,7 +242,7 @@ SELECT products.*, "productStatuses".status, dates_date
 FROM prod_fdw.products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM prod_fdw.dates
-                     WHERE id > 29551 -->= 29716--
+                     WHERE id > 29683 -->= 29716--
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -256,7 +256,7 @@ SELECT products.*, "productStatuses".status, dates_date
 FROM products
          INNER JOIN (SELECT id AS "dateId", date AS dates_date
                      FROM dates
-                     WHERE id > 29551-->= 29805--
+                     WHERE id > 29800-->= 29805--
     --WHERE date >= '2024-07-10'
 ) AS dates
                     USING ("dateId")
@@ -335,6 +335,22 @@ WHERE "dateId" > 24646;
 
 /*  TESTS   */
 
+
+/*  T01A:  product count prod <-> staging    */
+SELECT "retailerId",
+       dates_date::date  AS load_date,
+       staging.status    AS status_in_staging,
+       COUNT(staging.id) AS recordcount_in_staging,
+       prod.status       AS status_in_prod,
+       COUNT(prod.id)    AS recordcount_in_prod
+FROM test.tstg_products AS staging
+         FULL OUTER JOIN test.tprd_products AS prod
+                         USING ("retailerId", dates_date, "sourceId")
+WHERE prod.id IS NULL
+   OR staging.id IS NULL
+GROUP BY 1, 2, 3, 5
+ORDER BY 1, 2 DESC;
+
 /*  T01:  product count prod <-> staging    */
 WITH prod AS (SELECT DISTINCT dates_date, "sourceId", "retailerId"
               FROM test.tprd_products),
@@ -381,7 +397,7 @@ FROM test.tstg_products AS staging
 WHERE prod.id IS NULL;
 
 /*  T03:  product differences in general attributes    */
-SELECT staging.status, prod.status, staging.promotions , prod.promotions, *
+SELECT staging.status, prod.status, staging.promotions, prod.promotions, *
 FROM test.tstg_products AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
@@ -722,19 +738,6 @@ WHERE staging."productBrand" != prod."productBrand"
 ORDER BY staging."sourceId" DESC;
 
 
-SELECT "retailerId",
-       dates_date::date  AS load_date,
-       staging.status    AS status_in_staging,
-       COUNT(staging.id) AS recordcount_in_staging,
-       prod.status       AS status_in_prod,
-       COUNT(prod.id)    AS recordcount_in_prod
-FROM test.tstg_products AS staging
-         FULL OUTER JOIN test.tprd_products AS prod
-                         USING ("retailerId", dates_date, "sourceId")
-WHERE prod.id IS NULL
-   OR staging.id IS NULL
-GROUP BY 1, 2, 3, 5
-ORDER BY 1, 2;
 
 SELECT "sourceId", prod."coreProductId", *
 FROM test.tprd_products AS prod
