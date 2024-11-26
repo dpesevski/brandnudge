@@ -17,5 +17,20 @@ FROM test.test_load;
 
 SELECT staging.load_retailer_data(data, flag)
 FROM test.test_load
-WHERE load_date = '2024-11-25'
-
+WHERE load_date = '2024-11-25';
+/*
+WITH loads AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY (dd_retailer).id, dd_date ORDER BY run_at DESC ) AS rownum
+               FROM staging.load
+               WHERE dd_date >= '2024-11-16'
+                 --AND (dd_retailer).name = 'woolworths'
+                 AND id < 254)
+SELECT id,
+       --data,
+       flag,
+       run_at,
+       dd_date,
+       staging.load_retailer_data(data, flag)
+FROM loads
+WHERE rownum = 1
+ORDER BY (dd_retailer).id, dd_date;
+*/

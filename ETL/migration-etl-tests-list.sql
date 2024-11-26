@@ -341,10 +341,26 @@ WHERE "dateId" > 24646;
 
 /*  T01A:  product count prod <-> staging    */
 SELECT "retailerId",
+       dates_date::date                        AS load_date,
+       STRING_AGG(DISTINCT common_status, ',') AS status,
+       COUNT(staging.id)                       AS "Missing/Unmatched records in prod",
+       COUNT(prod.id)                          AS "Missing/Unmatched records in staging"
+FROM (SELECT *, status AS common_status FROM test.tstg_products) AS staging
+         FULL OUTER JOIN (SELECT *, REPLACE(status, 'listing', 'Listed') AS common_status
+                          FROM test.tprd_products) AS prod
+                         USING ("retailerId", dates_date, "sourceId", common_status)
+WHERE prod.id IS NULL
+   OR staging.id IS NULL
+GROUP BY 1, 2
+ORDER BY 1, 2 DESC, 3;
+
+
+/*  T01C:  product count prod <-> staging    */
+SELECT "retailerId",
        dates_date::date  AS load_date,
        common_status,
-       COUNT(staging.id) AS "Missing records in prod",
-       COUNT(prod.id)    AS "Missing records in staging"
+       COUNT(staging.id) AS "Missing/Unmatched records in prod",
+       COUNT(prod.id)    AS "Missing/Unmatched records in staging"
 FROM (SELECT *, status AS common_status FROM test.tstg_products) AS staging
          FULL OUTER JOIN (SELECT *, REPLACE(status, 'listing', 'Listed') AS common_status
                           FROM test.tprd_products) AS prod
