@@ -739,7 +739,8 @@ BEGIN
     END IF;
 
     UPDATE staging.load
-    SET execution_time=ROUND((EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()) - EXTRACT(EPOCH FROM _start_ts))::numeric, 2) -- in seconds
+    SET execution_time=ROUND((EXTRACT(EPOCH FROM CLOCK_TIMESTAMP()) - EXTRACT(EPOCH FROM _start_ts))::numeric,
+                             2) -- in seconds
     WHERE id = _load_id;
 
     RETURN _load_id;
@@ -1355,7 +1356,8 @@ BEGIN
 
     UPDATE tmp_product_pp
     SET status=CASE
-                   WHEN dd_date = last_product_status.date + '1 day'::interval THEN 'Listed'
+                   WHEN dd_date = last_product_status.date + '1 day'::interval AND
+                        last_product_status.status != 'De-listed' THEN 'Listed'
                    ELSE 'Re-listed'
         END,
         "isNpd"= FALSE
@@ -1421,7 +1423,7 @@ BEGIN
            --promotions,
            "promotionDescription",
            features,
-           dd_date     AS "date",
+           dd_date                       AS "date",
            "sourceId",
            "productBrand",
            "productTitle",
@@ -1449,15 +1451,15 @@ BEGIN
            --"shelfPrice",
            "productTitleDetail",
            "sizeUnit",
-           dd_date_id  AS "dateId",
+           dd_date_id                    AS "dateId",
            marketplace,
            "marketplaceData",
            "priceMatchDescription",
            "priceMatch",
            "priceLock",
-           FALSE       AS "isNpd",
-           load_retailer_data_pp.load_id                                       AS load_id,
-           'De-listed' AS status
+           FALSE                         AS "isNpd",
+           load_retailer_data_pp.load_id AS load_id,
+           'De-listed'                   AS status
     FROM delisted_product;
 
     /*  createProductBy    */
@@ -1818,7 +1820,8 @@ BEGIN
                load_retailer_data_pp.load_id
         FROM tmp_product_pp
         ON CONFLICT ("productId")
-            DO NOTHING
+            DO UPDATE
+                SET status = excluded.status
         RETURNING "productStatuses".*)
     INSERT
     INTO staging.debug_productStatuses

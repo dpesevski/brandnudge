@@ -117,7 +117,7 @@ SELECT id             AS load_id,
        flag,
 --
        run_at,
-       execution_time,-- AS "execution time (in seconds)",
+       execution_time AS "execution time (in seconds)",
        dd_date
 FROM staging.load
          LEFT OUTER JOIN prod_cnt USING (id)

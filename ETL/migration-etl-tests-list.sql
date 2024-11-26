@@ -232,6 +232,9 @@ WHERE id >=29551
 ORDER BY "createdAt" DESC NULLS LAST;
 
 */
+
+
+
 SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
 SHOW WORK_MEM;
@@ -339,6 +342,22 @@ WHERE "dateId" > 24646;
 /*  T01A:  product count prod <-> staging    */
 SELECT "retailerId",
        dates_date::date  AS load_date,
+       common_status,
+       COUNT(staging.id) AS "Missing records in prod",
+       COUNT(prod.id)    AS "Missing records in staging"
+FROM (SELECT *, status AS common_status FROM test.tstg_products) AS staging
+         FULL OUTER JOIN (SELECT *, REPLACE(status, 'listing', 'Listed') AS common_status
+                          FROM test.tprd_products) AS prod
+                         USING ("retailerId", dates_date, "sourceId", common_status)
+WHERE prod.id IS NULL
+   OR staging.id IS NULL
+GROUP BY 1, 2, 3
+ORDER BY 1, 2 DESC, 3;
+
+
+/*  T01B:  product count prod <-> staging    */
+SELECT "retailerId",
+       dates_date::date  AS load_date,
        staging.status    AS status_in_staging,
        COUNT(staging.id) AS recordcount_in_staging,
        prod.status       AS status_in_prod,
@@ -372,23 +391,6 @@ FROM prod_cnt
                          USING ("retailerId")
 ORDER BY "retailerId";
 
----118693
---  38107
-SELECT "retailerId", COUNT(*)
-FROM test.tstg_products
-WHERE status = 'De-listed'
-GROUP BY "retailerId";
-
-/*
-'De-listed'
-+----------+-----+
-|retailerId|count|
-+----------+-----+
-|1         |2033 | -29441
-|807       |579  |   -625
-|972       |1421 |  -1525
-+----------+-----+
-*/
 /*  T02:  missing products in prod    */
 SELECT staging.*
 FROM test.tstg_products AS staging
@@ -398,7 +400,7 @@ WHERE prod.id IS NULL;
 
 /*  T03:  product differences in general attributes    */
 SELECT staging.status, prod.status, staging.promotions, prod.promotions, *
-FROM test.tstg_products AS staging
+FROM (SELECT * FROM test.tstg_products WHERE status != 'De-listed') AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."sourceType" != prod."sourceType"
@@ -493,7 +495,8 @@ ORDER BY staging."sourceId" DESC;
 WITH staging AS (SELECT tstg_products.*,
                         debug_tmp_product_pp.promotions AS promodata
                  FROM test.tstg_products
-                          INNER JOIN staging.debug_tmp_product_pp USING (id))
+                          INNER JOIN staging.debug_tmp_product_pp USING (id)
+                 WHERE tstg_products.status != 'De-listed')
 SELECT staging.status,
        prod.status,
 
@@ -508,7 +511,7 @@ FROM staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging.multibuy != prod.multibuy
-ORDER BY staging."sourceId" DESC;
+ORDER BY staging.dates_date DESC, staging."sourceId" DESC;
 
 /*  T08:  product differences in promotionDescription    */
 SELECT staging.status,
@@ -520,7 +523,7 @@ SELECT staging.status,
        staging."promotionDescription" AS staging_promotionDescription,
        prod."promotionDescription"    AS prod_promotionDescription,
        prod.*
-FROM test.tstg_products AS staging
+FROM (SELECT * FROM test.tstg_products WHERE status != 'De-listed') AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."promotionDescription" != prod."promotionDescription"
@@ -535,7 +538,7 @@ SELECT staging.status,
        load_id,
        staging."href" AS staging_href,
        prod."href"    AS prod_href
-FROM test.tstg_products staging
+FROM (SELECT * FROM test.tstg_products WHERE status != 'De-listed') AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."href" != prod."href";
@@ -718,7 +721,7 @@ SELECT staging.status,
        staging."productInStock",
        prod."productInStock",
        prod.*
-FROM test.tstg_products AS staging
+FROM (SELECT * FROM test.tstg_products WHERE status != 'De-listed') AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productInStock" != prod."productInStock"
@@ -731,7 +734,7 @@ SELECT "retailerId",
        staging."productBrand",
        prod."productBrand",
        prod.*
-FROM test.tstg_products AS staging
+FROM (SELECT * FROM test.tstg_products WHERE status != 'De-listed') AS staging
          INNER JOIN test.tprd_products AS prod
                     USING ("retailerId", dates_date, "sourceId")
 WHERE staging."productBrand" != prod."productBrand"
