@@ -249,8 +249,10 @@ $$;
 
 --ALTER SCHEMA staging RENAME TO staging_bck;
 
+/*
 DROP SCHEMA IF EXISTS staging CASCADE;
 CREATE SCHEMA staging;
+*/
 
 DROP TYPE IF EXISTS staging.t_promotion CASCADE;
 CREATE TYPE staging.t_promotion AS

@@ -367,3 +367,8 @@ CREATE UNIQUE INDEX "productStatuses_pkey"
 CREATE UNIQUE INDEX productstatuses_productid_uindex
     ON public."productStatuses" ("productId");
 
+ALTER TABLE public."productStatuses"
+    ADD CONSTRAINT productstatuses_products_id_fk
+        FOREIGN KEY ("productId") REFERENCES public.products; --[2024-11-28 17:50:35] completed in 11 m 3 s
+
+
