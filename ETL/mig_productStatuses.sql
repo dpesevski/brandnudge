@@ -367,24 +367,3 @@ CREATE UNIQUE INDEX "productStatuses_pkey"
 CREATE UNIQUE INDEX productstatuses_productid_uindex
     ON public."productStatuses" ("productId");
 
-/*
--- no longer needed in the etl
-
-DROP TABLE IF EXISTS staging.PRODUCT_STATUS;
-CREATE TABLE staging.PRODUCT_STATUS AS
-WITH PRODUCT_STATUS AS (SELECT *,
-                               ROW_NUMBER()
-                               OVER (PARTITION BY "retailerId", "coreProductId" ORDER BY date DESC) AS rownum
-                        FROM staging.product_status_history)
-SELECT "retailerId",
-       "coreProductId",
-       date,
-       status
-FROM PRODUCT_STATUS
-WHERE rownum = 1;--1,086,396 rows affected in 6 m 26 s 543 ms
-
-ALTER TABLE staging.PRODUCT_STATUS
-    ADD CONSTRAINT PRODUCT_STATUS_pk
-        PRIMARY KEY ("retailerId",
-                     "coreProductId");
-*/
