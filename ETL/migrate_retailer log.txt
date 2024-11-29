@@ -1,0 +1,25 @@
+brandnudge-dev.public> SELECT staging.migrate_retailer(1)
+[2024-11-29 17:50:53.056077+00] T000: migrate_retailer 1:   STARTED
+table "migration_product_status" does not exist, skipping
+[2024-11-29 17:55:38.262757+00] T001: staging.migration_product_status:   CREATED
+[2024-11-29 17:56:33.771601+00] T002: Cleaning of extra `De-listed` records :   STARTED
+[2024-11-29 18:01:04.988424+00] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted :   COMPLETED
+[2024-11-29 18:01:26.008216+00] T004: INSERT INTO staging.data_corr_status_deleted_productsData :   COMPLETED
+[2024-11-29 18:02:11.094252+00] T005: INSERT INTO staging.data_corr_status_deleted_products :   COMPLETED
+[2024-11-29 18:02:11.975942+00] T006: Cleaning of extra `De-listed` records :   COMPLETED
+table "migstatus_products_filtered" does not exist, skipping
+[2024-11-29 18:04:22.146563+00] T007: staging.migstatus_products_filtered :   CREATED
+[2024-11-29 18:04:39.543591+00] T008: migstatus_products_filtered_retailerId_coreProductId_date_index :   CREATED
+[2024-11-29 18:04:39.548117+00] T009: DELETE from staging.product_status_history :   COMPLETED
+[2024-11-29 18:10:49.556329+00] T010: INSERT INTO staging.product_status_history 1ST PART :   COMPLETED
+[2024-11-29 18:10:59.433655+00] T011: INSERT INTO staging.product_status_history 2ND PART :   COMPLETED
+table "migstatus_productStatuses_additional" does not exist, skipping
+[2024-11-29 18:11:06.356519+00] T012: migstatus_productStatuses_additional :   CREATED
+[2024-11-29 18:11:07.485878+00] T013: migstatus_productStatuses_additional INDEXES :   CREATED
+[2024-11-29 18:11:25.504657+00] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL) :   COMPLETED
+table "migstatus_ins_products" does not exist, skipping
+[2024-11-29 18:11:53.593325+00] T015: staging.migstatus_ins_products :   CREATED
+[2024-11-29 18:13:53.898965+00] T016: INSERT INTO PRODUCTS :   COMPLETED
+[2024-11-29 18:13:55.204034+00] T017: UPDATED staging.product_status_history :   COMPLETED
+[2024-11-29 18:20:23.513131+00] T018: DELETE FROM "productStatuses" :   COMPLETED
+[2024-11-29 18:26:35.106899+00] T019: INSERT INTO "productStatuses" :   COMPLETED

@@ -1,0 +1,546 @@
+[2024-11-29 17:30:19] Connected
+brandnudge.public> SELECT COUNT(*) FROM retailers
+[2024-11-29 17:30:19] 1 row retrieved starting from 1 in 198 ms (execution: 69 ms, fetching: 129 ms)
+[2024-11-29 19:46:27] Connected
+brandnudge.public> set search_path = "public"
+[2024-11-29 19:46:28] completed in 66 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
+                       WITH NO DATA
+[2024-11-29 19:46:28] completed in 87 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_aggregatedProducts AS TABLE "aggregatedProducts"
+                       WITH NO DATA
+[2024-11-29 19:46:28] completed in 77 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_productsData AS TABLE "productsData"
+                       WITH NO DATA
+[2024-11-29 19:46:28] completed in 75 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_promotions AS TABLE "promotions" WITH NO DATA
+[2024-11-29 19:46:28] completed in 74 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_products AS TABLE products WITH NO DATA
+[2024-11-29 19:46:29] completed in 76 ms
+brandnudge.public> DROP TABLE IF EXISTS staging.product_status_history
+table "product_status_history" does not exist, skipping
+[2024-11-29 19:46:39] completed in 71 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.product_status_history
+                   (
+                       "retailerId"    integer NOT NULL,
+                       "coreProductId" integer NOT NULL,
+                       date            date    NOT NULL,
+                       "productId"     integer,
+                       status          text,
+                       CONSTRAINT product_status_history_pk
+                           PRIMARY KEY ("retailerId", "coreProductId", date),--DEFERRABLE INITIALLY DEFERRED,
+                       CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId")-- DEFERRABLE INITIALLY DEFERRED
+                   )
+[2024-11-29 19:46:40] completed in 86 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
+                   (
+                       "retailerId"      integer PRIMARY KEY,
+                       "migration_start" timestamp DEFAULT NOW(),
+                       "migration_end"   timestamp
+                   )
+[2024-11-29 19:46:40] completed in 78 ms
+brandnudge.public> INSERT INTO staging.migration_migrated_retailers ("retailerId")
+                       VALUES (1)
+[2024-11-29 19:48:31] 1 row affected in 71 ms
+brandnudge.public> DROP TABLE IF EXISTS staging.migration_product_status
+table "migration_product_status" does not exist, skipping
+[2024-11-29 19:48:31] completed in 65 ms
+brandnudge.public> CREATE TABLE staging.migration_product_status AS
+                       SELECT *
+                       FROM "productStatuses"
+                                INNER JOIN (SELECT products.id AS "productId", "retailerId", "coreProductId", "date"::date
+                                            FROM products
+                                            WHERE "retailerId" = 1) AS products
+                                           USING ("productId")
+[2024-11-29 19:48:39] Cancelling…
+[2024-11-29 19:48:40] [57014] ERROR: canceling statement due to user request
+brandnudge.public> SET work_mem = '4GB'
+[2024-11-29 19:49:01] completed in 64 ms
+brandnudge.public> SET max_parallel_workers_per_gather = 4
+[2024-11-29 19:49:01] completed in 64 ms
+brandnudge.public> SHOW WORK_MEM
+[2024-11-29 19:49:01] 1 row retrieved starting from 1 in 284 ms (execution: 67 ms, fetching: 217 ms)
+brandnudge.public> INSERT INTO staging.migration_migrated_retailers ("retailerId")
+                       VALUES (1)
+[2024-11-29 19:49:14] [23505] ERROR: duplicate key value violates unique constraint "migration_migrated_retailers_pkey"
+[2024-11-29 19:49:14] Detail: Key ("retailerId")=(1) already exists.
+brandnudge.public> DROP TABLE IF EXISTS staging.migration_product_status
+table "migration_product_status" does not exist, skipping
+[2024-11-29 19:49:27] completed in 67 ms
+brandnudge.public> CREATE TABLE staging.migration_product_status AS
+                       SELECT *
+                       FROM "productStatuses"
+                                INNER JOIN (SELECT products.id AS "productId", "retailerId", "coreProductId", "date"::date
+                                            FROM products
+                                            WHERE "retailerId" = 1) AS products
+                                           USING ("productId")
+[2024-11-29 19:56:17] 27,311,954 rows affected in 6 m 50 s 376 ms
+brandnudge.public> CREATE UNIQUE INDEX migration_product_status_productid_uindex
+                           ON staging.migration_product_status ("productId")
+[2024-11-29 19:56:32] completed in 14 s 701 ms
+brandnudge.public> CREATE INDEX migration_product_status_retailer_coreproduct_date_index
+                           ON staging.migration_product_status ("retailerId",
+                                                                "coreProductId",
+                                                                date)
+[2024-11-29 19:56:54] completed in 21 s 165 ms
+brandnudge.public> CREATE INDEX migration_product_status_status_index
+                           ON staging.migration_product_status (status)
+[2024-11-29 19:57:09] completed in 14 s 802 ms
+brandnudge.public> WITH deleted AS (
+                           WITH product_status_prev AS (SELECT *,
+                                                               LAG("productId")
+                                                               OVER (PARTITION BY "retailerId","coreProductId" ORDER BY date, "productId" DESC) AS prev_product_id,
+                                                               LAG(status)
+                                                               OVER (PARTITION BY "retailerId","coreProductId" ORDER BY date, "productId" DESC) AS prev_status
+                                                        FROM staging.migration_product_status)
+                               DELETE
+                                   FROM "productStatuses"
+                                       USING product_status_prev
+                                       WHERE "productStatuses"."productId" = product_status_prev."productId"
+                                           AND product_status_prev.status IN ('de-listed', 'De-listed')
+                                           AND product_status_prev.prev_status IN ('de-listed', 'De-listed')
+                                       RETURNING "productStatuses".*)
+                       INSERT
+                       INTO staging.data_corr_status_extra_delisted_deleted
+                       SELECT *
+                       FROM deleted
+[2024-11-29 19:59:05] 167,698 rows affected in 1 m 56 s 391 ms
+brandnudge.public> WITH deleted AS (
+                           DELETE
+                               FROM "aggregatedProducts"
+                                   USING staging.data_corr_status_extra_delisted_deleted
+                                   WHERE "aggregatedProducts"."productId" = data_corr_status_extra_delisted_deleted."productId"
+                                   RETURNING "aggregatedProducts".*)
+                       INSERT
+                       INTO staging.data_corr_status_deleted_aggregatedProducts
+                       SELECT *
+                       FROM deleted
+[2024-11-29 19:59:32] 59,272 rows affected in 5 s 538 ms
+brandnudge.public> WITH deleted AS (
+                           DELETE
+                               FROM "productsData"
+                                   USING staging.data_corr_status_extra_delisted_deleted
+                                   WHERE "productsData"."productId" = data_corr_status_extra_delisted_deleted."productId"
+                                   RETURNING "productsData".*)
+                       INSERT
+                       INTO staging.data_corr_status_deleted_productsData
+                       SELECT *
+                       FROM deleted
+[2024-11-29 19:59:45] 100,095 rows affected in 12 s 802 ms
+brandnudge.public> WITH deleted AS (
+                           DELETE
+                               FROM "promotions"
+                                   USING staging.data_corr_status_extra_delisted_deleted
+                                   WHERE "promotions"."productId" = data_corr_status_extra_delisted_deleted."productId"
+                                   RETURNING "promotions".*)
+                       INSERT
+                       INTO staging.data_corr_status_deleted_promotions
+                       SELECT *
+                       FROM deleted
+[2024-11-29 19:59:46] 3,986 rows affected in 1 s 259 ms
+brandnudge.public> WITH deleted AS (
+                           DELETE
+                               FROM products
+                                   USING staging.data_corr_status_extra_delisted_deleted
+                                   WHERE products.id = data_corr_status_extra_delisted_deleted."productId"
+                                   RETURNING products.*)
+                       INSERT
+                       INTO staging.data_corr_status_deleted_products
+                       SELECT *
+                       FROM deleted
+[2024-11-29 20:00:24] 167,698 rows affected in 38 s 90 ms
+brandnudge.public> DELETE
+                       FROM staging.migration_product_status
+                           USING staging.data_corr_status_extra_delisted_deleted
+                       WHERE migration_product_status."productId" = data_corr_status_extra_delisted_deleted."productId"
+[2024-11-29 20:00:31] 167,698 rows affected in 1 s 70 ms
+brandnudge.public> DROP TABLE IF EXISTS staging.migstatus_products_filtered
+table "migstatus_products_filtered" does not exist, skipping
+[2024-11-29 20:00:44] completed in 65 ms
+brandnudge.public> CREATE TABLE staging.migstatus_products_filtered AS
+                       WITH products AS (SELECT "retailerId",
+                                                "coreProductId",
+                                                date                                                                             AS load_date,
+                                                "productId",
+                                                ROW_NUMBER()
+                                                OVER (PARTITION BY "retailerId","coreProductId", date ORDER BY "productId" DESC) AS rownum
+                                         FROM staging.migration_product_status
+                                         WHERE status NOT IN ('de-listed', 'De-listed'))
+                       SELECT "retailerId",
+                              "coreProductId",
+                              load_date,
+                              "productId"
+                       FROM products
+                       WHERE rownum = 1
+                       ORDER BY "retailerId", "coreProductId", load_date
+[2024-11-29 20:03:10] 26,496,859 rows affected in 2 m 25 s 342 ms
+brandnudge.public> CREATE INDEX IF NOT EXISTS migstatus_products_filtered_retailerId_coreProductId_date_index
+                           ON staging.migstatus_products_filtered ("retailerId", "coreProductId", load_date)
+[2024-11-29 20:03:28] completed in 18 s 78 ms
+brandnudge.public> DELETE
+                       FROM staging.product_status_history
+                       WHERE "retailerId" = 1
+[2024-11-29 20:03:28] completed in 67 ms
+brandnudge.public> WITH retailer_product_load AS (SELECT "retailerId",
+                                                             "coreProductId",
+                                                             load_date,
+                                                             "productId",
+                                                             LAG(load_date)
+                                                             OVER (PARTITION BY "retailerId","coreProductId" ORDER BY load_date) AS prev_load_date
+                                                      FROM staging.migstatus_products_filtered),
+                            ins_data AS (SELECT "retailerId",
+                                                "coreProductId",
+                                                load_date AS date,
+                                                "productId",
+                                                CASE
+                                                    WHEN prev_load_date IS NULL THEN 'Newly'
+                                                    WHEN prev_load_date = load_date - '1 day'::interval
+                                                        THEN 'Listed'
+                                                    ELSE 'Re-listed'
+                                                    END   AS status
+                                         FROM retailer_product_load
+                   
+                                         UNION ALL
+                   
+                                         SELECT "retailerId",
+                                                "coreProductId",
+                                                (prev_load_date + '1 day'::interval)::date AS date,
+                                                NULL                                       AS "productId",
+                                                'De-listed'                                AS status
+                                         FROM retailer_product_load
+                                         WHERE prev_load_date < load_date - '1 day'::interval)
+                       INSERT
+                       INTO staging.product_status_history ("retailerId", "coreProductId", date, "productId", status)
+                       SELECT "retailerId", "coreProductId", date, "productId", status
+                       FROM ins_data
+[2024-11-29 20:09:41] 27,128,445 rows affected in 5 m 56 s 480 ms
+brandnudge.public> WITH last_product_load AS (SELECT "retailerId", "coreProductId", MAX(load_date) AS load_date
+                                                  FROM staging.migstatus_products_filtered
+                                                  GROUP BY "retailerId", "coreProductId"),
+                   
+                            last_retailer_load AS (SELECT "retailerId", MAX(load_date) AS last_load_date
+                                                   FROM staging.migstatus_products_filtered
+                                                   GROUP BY "retailerId")
+                       INSERT
+                       INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+                       SELECT "retailerId",
+                              "coreProductId",
+                              (load_date + '1 day'::interval)::date AS date,
+                              NULL                                  AS "productId",
+                              'De-listed'                           AS status
+                       FROM last_product_load
+                                INNER JOIN last_retailer_load USING ("retailerId")
+                       WHERE load_date < last_load_date
+[2024-11-29 20:09:51] 41,268 rows affected in 9 s 781 ms
+brandnudge.public> DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional"
+table "migstatus_productStatuses_additional" does not exist, skipping
+[2024-11-29 20:10:25] completed in 65 ms
+brandnudge.public> CREATE TABLE staging."migstatus_productStatuses_additional" AS
+                       SELECT "productStatuses".*
+                       FROM staging.migration_product_status AS "productStatuses"
+                                LEFT OUTER JOIN staging.product_status_history USING ("productId")
+                       WHERE product_status_history."productId" IS NULL
+[2024-11-29 20:10:33] 647,397 rows affected in 7 s 408 ms
+brandnudge.public> CREATE UNIQUE INDEX migstatus_productStatuses_additional_productid_uindex
+                           ON staging."migstatus_productStatuses_additional" ("productId")
+[2024-11-29 20:10:33] completed in 379 ms
+brandnudge.public> CREATE INDEX migstatus_productStatuses_additional_productid_addindex
+                           ON staging."migstatus_productStatuses_additional" ("retailerId",
+                                                                              "coreProductId",
+                                                                              date)
+[2024-11-29 20:10:34] completed in 440 ms
+brandnudge.public> CREATE INDEX migstatus_productStatuses_additional_productid_statusindex
+                           ON staging."migstatus_productStatuses_additional" (status)
+[2024-11-29 20:10:34] completed in 420 ms
+brandnudge.public> WITH delisted AS (SELECT "retailerId",
+                                                "coreProductId",
+                                                date,
+                                                "productId",
+                                                ROW_NUMBER() OVER (PARTITION BY "retailerId",
+                                                    "coreProductId",
+                                                    date ORDER BY "productId" DESC) AS rownum
+                                         FROM staging."migstatus_productStatuses_additional"
+                                         WHERE status IN ('de-listed', 'De-listed'))
+                       INSERT
+                       INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+                       SELECT "retailerId",
+                              "coreProductId",
+                              date,
+                              "productId",
+                              'De-listed' AS status
+                       FROM delisted
+                       WHERE rownum = 1
+                       ON CONFLICT ("retailerId", "coreProductId", date)
+                           DO UPDATE
+                           SET "productId"=excluded."productId"
+                       WHERE product_status_history."productId" IS NULL
+[2024-11-29 20:10:57] 618,862 rows affected in 17 s 556 ms
+brandnudge.public> DROP TABLE IF EXISTS staging.migstatus_ins_products
+table "migstatus_ins_products" does not exist, skipping
+[2024-11-29 20:11:14] completed in 67 ms
+brandnudge.public> CREATE TABLE staging.migstatus_ins_products AS
+                       WITH delisted AS (SELECT "retailerId",
+                                                "coreProductId",
+                                                "date"                                                                  AS delisted_date,
+                                                ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId", "date" ) AS rownum
+                                         FROM staging.product_status_history
+                                         WHERE "productId" IS NULL),
+                            last_load_product AS (SELECT delisted."retailerId",
+                                                         delisted."coreProductId",
+                                                         delisted.delisted_date,
+                                                         MAX(product.load_date) AS load_date
+                                                  FROM delisted
+                                                           INNER JOIN staging.migstatus_products_filtered AS product
+                                                                      ON (product."retailerId" = delisted."retailerId" AND
+                                                                          product."coreProductId" = delisted."coreProductId" AND
+                                                                          product.load_date < delisted.delisted_date)
+                                                  GROUP BY delisted."retailerId",
+                                                           delisted."coreProductId",
+                                                           delisted.delisted_date),
+                            ins_prod_selection AS (SELECT "productId" AS id,
+                                                          delisted_date,
+                                                          dates.id    AS delisted_date_id
+                                                   FROM staging.migstatus_products_filtered
+                                                            INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)
+                                                            LEFT OUTER JOIN dates ON (dates."date" = delisted_date))
+                       SELECT NEXTVAL('products_id_seq'::regclass) AS id,
+                              "sourceType",
+                              ean,
+                              promotions,
+                              "promotionDescription",
+                              features,
+                              delisted_date                        AS date,
+                              "sourceId",
+                              "productBrand",
+                              "productTitle",
+                              "productImage",
+                              "secondaryImages",
+                              "productDescription",
+                              "productInfo",
+                              "promotedPrice",
+                              "productInStock",
+                              "productInListing",
+                              "reviewsCount",
+                              "reviewsStars",
+                              "eposId",
+                              multibuy,
+                              "coreProductId",
+                              "retailerId",
+                   --                        CURRENT_TIMESTAMP AS "createdAt",
+                   --                        CURRENT_TIMESTAMP AS "updatedAt",
+                              '2000-01-01'::timestamptz            AS "createdAt",
+                              '2000-01-01'::timestamptz            AS "updatedAt",
+                              "imageId",
+                              size,
+                              "pricePerWeight",
+                              href,
+                              nutritional,
+                              "basePrice",
+                              "shelfPrice",
+                              "productTitleDetail",
+                              "sizeUnit",
+                              delisted_date_id                     AS "dateId",
+                              marketplace,
+                              "marketplaceData",
+                              "priceMatchDescription",
+                              "priceMatch",
+                              "priceLock",
+                              "isNpd",
+                              NULL::integer                        AS load_id
+                       FROM products
+                                INNER JOIN ins_prod_selection USING (id)
+[2024-11-29 20:11:46] 54,197 rows affected in 32 s 151 ms
+brandnudge.public> INSERT
+                       INTO products
+                       SELECT*
+                       FROM staging.migstatus_ins_products
+[2024-11-29 20:14:18] 54,197 rows affected in 2 m 3 s 230 ms
+brandnudge.public> UPDATE staging.product_status_history AS history
+                       SET "productId"=ins_products.id
+                       FROM staging.migstatus_ins_products AS ins_products
+                       WHERE history."retailerId" = ins_products."retailerId"
+                         AND history."coreProductId" = ins_products."coreProductId"
+                         AND history.date = ins_products.date
+[2024-11-29 20:14:58] 54,197 rows affected in 1 s 263 ms
+brandnudge.public> CREATE TABLE IF NOT EXISTS staging.data_corr_ret_mig_prod_status_bck AS TABLE public."productStatuses"
+                           WITH NO DATA
+[2024-11-29 20:15:14] completed in 81 ms
+brandnudge.public> WITH deleted AS (
+                           DELETE FROM "productStatuses"
+                               USING staging.migration_product_status WHERE
+                                   "productStatuses"."productId" = migration_product_status."productId"
+                                       AND migration_product_status."retailerId" = 1
+                               RETURNING "productStatuses".*)
+                       INSERT
+                       INTO staging.data_corr_ret_mig_prod_status_bck
+                       SELECT *
+                       FROM deleted
+[2024-11-29 20:22:06] 27,144,256 rows affected in 6 m 40 s 703 ms
+brandnudge.public> SHOW WORK_MEM
+[2024-11-29 20:22:20] 1 row retrieved starting from 1 in 384 ms (execution: 66 ms, fetching: 318 ms)
+brandnudge.public> CREATE TABLE staging.migret_ins_productstatuses1 AS
+                   SELECT "productStatuses".id,
+                          "productId",
+                          product_status_history.status,
+                          "productStatuses".screenshot,
+                          "productStatuses"."createdAt",
+                          "productStatuses"."updatedAt",
+                          "productStatuses".load_id
+                   FROM staging.product_status_history
+                            INNER JOIN public."productStatuses" USING ("productId")
+[2024-11-29 20:25:29] completed in 47 s 86 ms
+brandnudge.public> INSERT INTO "productStatuses"(id,
+                                                 "productId",
+                                                 status,
+                                                 screenshot,
+                                                 "createdAt",
+                                                 "updatedAt",
+                                                 load_id)
+                   SELECT id,
+                          "productId",
+                          status,
+                          screenshot,
+                          "createdAt",
+                          "updatedAt",
+                          load_id
+                   FROM staging.migret_ins_productstatuses1
+[2024-11-29 20:25:56] completed in 65 ms
+brandnudge.public> select count(*) from staging.migret_ins_productstatuses1
+[2024-11-29 20:26:30] 1 row retrieved starting from 1 in 253 ms (execution: 67 ms, fetching: 186 ms)
+brandnudge.public> drop table staging.migret_ins_productstatuses1
+[2024-11-29 20:27:37] completed in 75 ms
+brandnudge.public> CREATE TABLE staging.migret_ins_productstatuses1 AS
+                   SELECT "productStatuses".id,
+                          "productId",
+                          product_status_history.status,
+                          "productStatuses".screenshot,
+                          "productStatuses"."createdAt",
+                          "productStatuses"."updatedAt",
+                          "productStatuses".load_id
+                   FROM staging.product_status_history
+                            INNER JOIN staging.data_corr_ret_mig_prod_status_bck USING ("productId")
+[2024-11-29 20:27:56] [42P01] ERROR: missing FROM-clause entry for table "productStatuses"
+[2024-11-29 20:27:56] Position: 61
+brandnudge.public> CREATE TABLE staging.migret_ins_productstatuses1 AS
+                   SELECT "productStatuses".id,
+                          "productId",
+                          product_status_history.status,
+                          "productStatuses".screenshot,
+                          "productStatuses"."createdAt",
+                          "productStatuses"."updatedAt",
+                          "productStatuses".load_id
+                   FROM staging.product_status_history
+                            INNER JOIN staging.data_corr_ret_mig_prod_status_bck as "productStatuses" USING ("productId")
+[2024-11-29 20:29:59] 27,115,721 rows affected in 1 m 51 s 349 ms
+brandnudge.public> INSERT INTO "productStatuses"(id,
+                                                 "productId",
+                                                 status,
+                                                 screenshot,
+                                                 "createdAt",
+                                                 "updatedAt",
+                                                 load_id)
+                   SELECT id,
+                          "productId",
+                          status,
+                          screenshot,
+                          "createdAt",
+                          "updatedAt",
+                          load_id
+                   FROM staging.migret_ins_productstatuses1
+[2024-11-29 20:43:23] Cancelling…
+[2024-11-29 20:43:24] [57014] ERROR: canceling statement due to user request
+[2024-11-29 20:43:24] Where: SQL statement "SELECT 1 FROM ONLY "public"."products" x WHERE "id" OPERATOR(pg_catalog.=) $1 FOR KEY SHARE OF x"
+brandnudge.public> SHOW WORK_MEM
+[2024-11-29 20:43:29] 1 row retrieved starting from 1 in 333 ms (execution: 66 ms, fetching: 267 ms)
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       DROP CONSTRAINT "productStatuses_pkey",
+                       DROP CONSTRAINT productstatuses_products_id_fk
+[2024-11-29 20:43:45] completed in 1 s 221 ms
+brandnudge.public> DROP INDEX productstatuses_productid_uindex
+[2024-11-29 20:43:45] completed in 208 ms
+brandnudge.public> INSERT INTO "productStatuses"(id,
+                                                 "productId",
+                                                 status,
+                                                 screenshot,
+                                                 "createdAt",
+                                                 "updatedAt",
+                                                 load_id)
+                   SELECT id,
+                          "productId",
+                          status,
+                          screenshot,
+                          "createdAt",
+                          "updatedAt",
+                          load_id
+                   FROM staging.migret_ins_productstatuses1
+[2024-11-29 20:45:38] 27,115,721 rows affected in 1 m 48 s 751 ms
+brandnudge.public> CREATE TABLE staging.migret_ins_productstatuses2 AS
+                   SELECT "productId",
+                          product_status_history.status
+                   FROM staging.product_status_history
+                            LEFT OUTER JOIN public."productStatuses" USING ("productId")
+                   WHERE "productStatuses".id IS NULL
+[2024-11-29 20:46:51] 54,197 rows affected in 55 s 304 ms
+brandnudge.public> INSERT INTO "productStatuses"("productId",
+                                                 status,
+                                                 screenshot,
+                                                 "createdAt",
+                                                 "updatedAt",
+                                                 load_id)
+                   SELECT "productId",
+                          status,
+                          NULL              AS screenshot,
+                          CURRENT_TIMESTAMP AS "createdAt",
+                          CURRENT_TIMESTAMP AS "updatedAt",
+                          NULL              AS load_id
+                   FROM staging.migret_ins_productstatuses2
+[2024-11-29 20:47:05] 54,197 rows affected in 335 ms
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       ADD CONSTRAINT "productStatuses_pkey" UNIQUE (id)
+[2024-11-29 20:49:39] completed in 2 m 22 s 245 ms
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       ADD CONSTRAINT productstatuses_products_id_fk
+                           FOREIGN KEY ("productId") REFERENCES public.products
+[2024-11-29 20:53:25] Cancelling…
+[2024-11-29 20:53:26] [57014] ERROR: canceling statement due to user request
+[2024-11-29 20:53:26] Where: SQL statement "SELECT fk."productId" FROM ONLY "public"."productStatuses" fk LEFT OUTER JOIN ONLY "public"."products" pk ON ( pk."id" OPERATOR(pg_catalog.=) fk."productId") WHERE pk."id" IS NULL AND (fk."productId" IS NOT NULL)"
+brandnudge.public> SHOW WORK_MEM
+[2024-11-29 20:53:30] 1 row retrieved starting from 1 in 114 ms (execution: 53 ms, fetching: 61 ms)
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       DROP CONSTRAINT "productStatuses_pkey"
+[2024-11-29 20:53:40] completed in 380 ms
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       ADD CONSTRAINT "productStatuses_pkey" PRIMARY KEY (id)
+[2024-11-29 20:56:03] completed in 2 m 23 s 344 ms
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       ADD CONSTRAINT productstatuses_products_id_fk
+                           FOREIGN KEY ("productId") REFERENCES public.products
+[2024-11-29 21:05:35] completed in 9 m 31 s 48 ms
+brandnudge.public> CREATE UNIQUE INDEX productstatuses_productid_uindex
+                       ON public."productStatuses" ("productId")
+[2024-11-29 21:06:24] Cancelling…
+[2024-11-29 21:06:25] [57014] ERROR: canceling statement due to user request
+brandnudge.public> ALTER TABLE public."productStatuses"
+                       ADD CONSTRAINT "productStatuses_productId_uq" UNIQUE ("productId")
+[2024-11-29 21:08:56] completed in 2 m 27 s 622 ms
+brandnudge.public> UPDATE staging.migration_migrated_retailers
+                   SET migration_end=CLOCK_TIMESTAMP()
+                   WHERE "retailerId" = 1
+[2024-11-29 21:09:26] 1 row affected in 73 ms
+brandnudge.public> SELECT status, COUNT(*)
+                   FROM staging.product_status_history
+                   GROUP BY status
+[2024-11-29 21:09:39] 4 rows retrieved starting from 1 in 7 s 500 ms (execution: 7 s 370 ms, fetching: 130 ms)
+brandnudge.public> VACUUM FULL "productStatuses"
+[2024-11-29 21:11:07] Cancelling…
+[2024-11-29 21:11:08] [57014] ERROR: canceling statement due to user request
+[2024-11-29 21:11:29] Connected
+brandnudge.public> set search_path = "public"
+[2024-11-29 21:11:29] completed in 65 ms
+brandnudge.public> SET work_mem = '4GB'
+[2024-11-29 21:11:29] completed in 67 ms
+brandnudge.public> SET max_parallel_workers_per_gather = 4
+[2024-11-29 21:11:29] completed in 72 ms
+brandnudge.public> SHOW WORK_MEM
+[2024-11-29 21:11:30] 1 row retrieved starting from 1 in 259 ms (execution: 79 ms, fetching: 180 ms)
+brandnudge.public> VACUUM FULL "productStatuses"
