@@ -11,6 +11,7 @@ ALTER TABLE public."productStatuses"
 
 DROP INDEX productstatuses_productid_uindex;--[2024-11-29 18:16:42] completed in 188 ms
 
+DROP TABLE IF EXISTS staging.product_status_history;
 CREATE TABLE IF NOT EXISTS staging.product_status_history
 (
     "retailerId"    integer NOT NULL,
@@ -19,10 +20,24 @@ CREATE TABLE IF NOT EXISTS staging.product_status_history
     "productId"     integer,
     status          text,
     CONSTRAINT product_status_history_pk
-        PRIMARY KEY ("retailerId", "coreProductId", date) DEFERRABLE INITIALLY DEFERRED,
-    CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId") DEFERRABLE INITIALLY DEFERRED
+        PRIMARY KEY ("retailerId", "coreProductId", date),--DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId")-- DEFERRABLE INITIALLY DEFERRED
 );
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_aggregatedProducts AS TABLE "aggregatedProducts"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_productsData AS TABLE "productsData"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_promotions AS TABLE "promotions" WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_products AS TABLE products WITH NO DATA;
 
+CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
+(
+    "retailerId"      integer PRIMARY KEY,
+    "migration_start" timestamp DEFAULT NOW(),
+    "migration_end"   timestamp
+);
 CREATE OR REPLACE FUNCTION staging.migrate_retailer(id INTEGER) RETURNS void
     LANGUAGE plpgsql
 AS
@@ -64,8 +79,6 @@ BEGIN
     /*  DELETE EXTRA De-listed records  */
     RAISE NOTICE '[%] T002: Cleaning of extra `De-listed` records :   STARTED',CLOCK_TIMESTAMP();
 
-    CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
-        WITH NO DATA;
     WITH deleted AS (
         WITH product_status_prev AS (SELECT *,
                                             LAG("productId")
@@ -87,8 +100,6 @@ BEGIN
 
     RAISE NOTICE '[%] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted :   COMPLETED',CLOCK_TIMESTAMP();
 
-    CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_aggregatedProducts AS TABLE "aggregatedProducts"
-        WITH NO DATA;
     WITH deleted AS (
         DELETE
             FROM "aggregatedProducts"
@@ -100,8 +111,6 @@ BEGIN
     SELECT *
     FROM deleted;
 
-    CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_productsData AS TABLE "productsData"
-        WITH NO DATA;
     WITH deleted AS (
         DELETE
             FROM "productsData"
@@ -115,7 +124,6 @@ BEGIN
 
     RAISE NOTICE '[%] T004: INSERT INTO staging.data_corr_status_deleted_productsData :   COMPLETED',CLOCK_TIMESTAMP();
 
-    CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_promotions AS TABLE "promotions" WITH NO DATA;
     WITH deleted AS (
         DELETE
             FROM "promotions"
@@ -127,7 +135,6 @@ BEGIN
     SELECT *
     FROM deleted;
 
-    CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_products AS TABLE products WITH NO DATA;
     WITH deleted AS (
         DELETE
             FROM products
@@ -150,26 +157,6 @@ BEGIN
     RAISE NOTICE '[%] T006: Cleaning of extra `De-listed` records :   COMPLETED',CLOCK_TIMESTAMP();
 
     /*  DELETE EXTRA De-listed records:  END */
-
-
-    /*
-    brandnudge-dev.public> SELECT staging.migrate_retailer(1)
-    [2024-11-28 18:38:35] [42P07] relation "products_retailerid_index" already exists, skipping
-    products_retailerId_index created
-    [2024-11-28 18:38:35] [42P07] relation "migration_migrated_retailers" already exists, skipping
-    staging.migration_product_status created
-    Cleaning of extra `De-listed` records started
-    [2024-11-28 18:42:51] [42P07] relation "data_corr_status_extra_delisted_deleted" already exists, skipping
-    staging.data_corr_status_extra_delisted_deleted updated
-    [2024-11-28 18:44:28] [42P07] relation "data_corr_status_deleted_aggregatedproducts" already exists, skipping
-    [2024-11-28 18:44:33] [42P07] relation "data_corr_status_deleted_productsdata" already exists, skipping
-    staging.data_corr_status_deleted_productsData updated
-    [2024-11-28 18:44:44] [42P07] relation "data_corr_status_deleted_promotions" already exists, skipping
-    [2024-11-28 18:44:45] [42P07] relation "data_corr_status_deleted_products" already exists, skipping
-    staging.data_corr_status_deleted_products updated
-    Cleaning of extra `De-listed` records completed
-    [2024-11-28 18:45:04] 1 row retrieved starting from 1 in 6 m 29 s 421 ms (execution: 6 m 28 s 817 ms, fetching: 604 ms)
-    */
 
     DROP TABLE IF EXISTS staging.migstatus_products_filtered;
     CREATE TABLE staging.migstatus_products_filtered AS
@@ -194,21 +181,6 @@ BEGIN
     CREATE INDEX IF NOT EXISTS migstatus_products_filtered_retailerId_coreProductId_date_index
         ON staging.migstatus_products_filtered ("retailerId", "coreProductId", load_date); --[2024-11-28 20:23:00] completed in 17 s 538 ms
     RAISE NOTICE '[%] T008: migstatus_products_filtered_retailerId_coreProductId_date_index :   CREATED',CLOCK_TIMESTAMP();
-
-    CREATE TABLE IF NOT EXISTS staging.product_status_history
-    (
-        "retailerId"    integer NOT NULL,
-        "coreProductId" integer NOT NULL,
-        date            date    NOT NULL,
-        "productId"     integer,
-        status          text,
-        CONSTRAINT product_status_history_pk
-            PRIMARY KEY ("retailerId", "coreProductId", date) DEFERRABLE INITIALLY DEFERRED,
-        CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId") DEFERRABLE INITIALLY DEFERRED
-    );
-
-
-    --CREATE UNIQUE INDEX IF NOT EXISTS product_status_history_productid_uindex ON staging.product_status_history ("productId");
 
     DELETE
     FROM staging.product_status_history
@@ -279,7 +251,6 @@ BEGIN
     FROM staging.migration_product_status AS "productStatuses"
              LEFT OUTER JOIN staging.product_status_history USING ("productId")
     WHERE product_status_history."productId" IS NULL; --[2024-11-28 21:06:46] 703,455 rows affected in 33 s 789 ms
-
 
     RAISE NOTICE '[%] T012: migstatus_productStatuses_additional :   CREATED',CLOCK_TIMESTAMP();
 
@@ -440,7 +411,6 @@ after the update
     FROM deleted;
     RAISE NOTICE '[%] T018: DELETE FROM "productStatuses" :   COMPLETED',CLOCK_TIMESTAMP();
 
-
     INSERT INTO "productStatuses"
     SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regclass)) AS id,
            "productId",
@@ -476,6 +446,25 @@ CREATE UNIQUE INDEX productstatuses_productid_uindex
 VACUUM FULL "productStatuses";
 
 
+
+/*
+brandnudge-dev.public> SELECT staging.migrate_retailer(1)
+[2024-11-28 18:38:35] [42P07] relation "products_retailerid_index" already exists, skipping
+products_retailerId_index created
+[2024-11-28 18:38:35] [42P07] relation "migration_migrated_retailers" already exists, skipping
+staging.migration_product_status created
+Cleaning of extra `De-listed` records started
+[2024-11-28 18:42:51] [42P07] relation "data_corr_status_extra_delisted_deleted" already exists, skipping
+staging.data_corr_status_extra_delisted_deleted updated
+[2024-11-28 18:44:28] [42P07] relation "data_corr_status_deleted_aggregatedproducts" already exists, skipping
+[2024-11-28 18:44:33] [42P07] relation "data_corr_status_deleted_productsdata" already exists, skipping
+staging.data_corr_status_deleted_productsData updated
+[2024-11-28 18:44:44] [42P07] relation "data_corr_status_deleted_promotions" already exists, skipping
+[2024-11-28 18:44:45] [42P07] relation "data_corr_status_deleted_products" already exists, skipping
+staging.data_corr_status_deleted_products updated
+Cleaning of extra `De-listed` records completed
+[2024-11-28 18:45:04] 1 row retrieved starting from 1 in 6 m 29 s 421 ms (execution: 6 m 28 s 817 ms, fetching: 604 ms)
+*/
 /*
 brandnudge-dev.public> SELECT staging.migrate_retailer(1)
 [2024-11-29 15:13:21.31912+00] T000: migrate_retailer 1:   STARTED
