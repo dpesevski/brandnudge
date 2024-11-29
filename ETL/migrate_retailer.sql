@@ -1,16 +1,26 @@
-CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
-(
-    "retailerId"      integer PRIMARY KEY,
-    "migration_start" timestamp DEFAULT NOW(),
-    "migration_end"   timestamp
-);
+/*  disable constraints on "productStatuses" */
 ALTER TABLE public."productStatuses"
     DROP CONSTRAINT "productStatuses_pkey",
     ADD CONSTRAINT "productStatuses_pkey" UNIQUE (id) DEFERRABLE INITIALLY DEFERRED,
     ALTER CONSTRAINT "productstatuses_products_id_fk" DEFERRABLE INITIALLY DEFERRED;--[2024-11-29 18:16:42] completed in 2 m 36 s 385 ms
 
-DROP INDEX productstatuses_productid_uindex;--[2024-11-29 18:16:42] completed in 188 ms
+DROP INDEX productstatuses_productid_uindex;
+--[2024-11-29 18:16:42] completed in 188 ms
 
+/*  create tables for backup of data related to extra De-listed records   */
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_aggregatedProducts AS TABLE "aggregatedProducts"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_productsData AS TABLE "productsData"
+    WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_promotions AS TABLE "promotions" WITH NO DATA;
+CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_products AS TABLE products WITH NO DATA;
+
+CREATE TABLE IF NOT EXISTS staging.data_corr_ret_mig_prod_status_bck AS TABLE public."productStatuses"
+    WITH NO DATA;
+
+/*  migrate_retailer    */
 DROP TABLE IF EXISTS staging.product_status_history;
 CREATE TABLE IF NOT EXISTS staging.product_status_history
 (
@@ -23,14 +33,6 @@ CREATE TABLE IF NOT EXISTS staging.product_status_history
         PRIMARY KEY ("retailerId", "coreProductId", date),--DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId")-- DEFERRABLE INITIALLY DEFERRED
 );
-CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
-    WITH NO DATA;
-CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_aggregatedProducts AS TABLE "aggregatedProducts"
-    WITH NO DATA;
-CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_productsData AS TABLE "productsData"
-    WITH NO DATA;
-CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_promotions AS TABLE "promotions" WITH NO DATA;
-CREATE TABLE IF NOT EXISTS staging.data_corr_status_deleted_products AS TABLE products WITH NO DATA;
 
 CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
 (
@@ -61,7 +63,7 @@ BEGIN
                          WHERE "retailerId" = migrate_retailer.id) AS products
                         USING ("productId");--[2024-11-28 15:22:52] 27,185,505 rows affected in 6 m 53 s 33 ms
 
-    RAISE NOTICE '[%] T001: staging.migration_product_status:   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T001: CREATE staging.migration_product_status:   DONE',CLOCK_TIMESTAMP();
 
     CREATE UNIQUE INDEX migration_product_status_productid_uindex
         ON staging.migration_product_status ("productId");--[2024-11-28 15:23:25] completed in 16 s 282 ms
@@ -98,7 +100,7 @@ BEGIN
     SELECT *
     FROM deleted;--[2024-11-28 17:34:43] 94,805 rows affected in 2 m 11 s 12 ms
 
-    RAISE NOTICE '[%] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted:   DONE',CLOCK_TIMESTAMP();
 
     WITH deleted AS (
         DELETE
@@ -122,7 +124,7 @@ BEGIN
     SELECT *
     FROM deleted;
 
-    RAISE NOTICE '[%] T004: INSERT INTO staging.data_corr_status_deleted_productsData :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T004: INSERT INTO staging.data_corr_status_deleted_productsData:   DONE',CLOCK_TIMESTAMP();
 
     WITH deleted AS (
         DELETE
@@ -147,14 +149,14 @@ BEGIN
     FROM deleted;
     --[2024-11-28 17:59:01] 94,805 rows affected in 16 s 218 ms
 
-    RAISE NOTICE '[%] T005: INSERT INTO staging.data_corr_status_deleted_products :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T005: INSERT INTO staging.data_corr_status_deleted_products:   DONE',CLOCK_TIMESTAMP();
 
     DELETE
     FROM staging.migration_product_status
         USING staging.data_corr_status_extra_delisted_deleted
     WHERE migration_product_status."productId" = data_corr_status_extra_delisted_deleted."productId";
 
-    RAISE NOTICE '[%] T006: Cleaning of extra `De-listed` records :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T006: Cleaning of extra `De-listed` records:   DONE',CLOCK_TIMESTAMP();
 
     /*  DELETE EXTRA De-listed records:  END */
 
@@ -176,16 +178,16 @@ BEGIN
     WHERE rownum = 1
     ORDER BY "retailerId", "coreProductId", load_date; --[2024-11-28 20:17:47] 26,358,160 rows affected in 2 m 5 s 915 ms
 
-    RAISE NOTICE '[%] T007: staging.migstatus_products_filtered :   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T007: CREATE staging.migstatus_products_filtered:   DONE',CLOCK_TIMESTAMP();
 
     CREATE INDEX IF NOT EXISTS migstatus_products_filtered_retailerId_coreProductId_date_index
         ON staging.migstatus_products_filtered ("retailerId", "coreProductId", load_date); --[2024-11-28 20:23:00] completed in 17 s 538 ms
-    RAISE NOTICE '[%] T008: migstatus_products_filtered_retailerId_coreProductId_date_index :   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T008: CREATE migstatus_products_filtered_retailerId_coreProductId_date_index:   DONE',CLOCK_TIMESTAMP();
 
     DELETE
     FROM staging.product_status_history
     WHERE "retailerId" = migrate_retailer.id; --27,156,189 rows affected in 1 m 25 s 103 ms
-    RAISE NOTICE '[%] T009: DELETE from staging.product_status_history :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T009: DELETE from staging.product_status_history:   DONE',CLOCK_TIMESTAMP();
 
     WITH retailer_product_load AS (SELECT "retailerId",
                                           "coreProductId",
@@ -222,7 +224,7 @@ BEGIN
     -- CREATE TABLE [2024-11-28 20:25:49] 27,124,321 rows affected in 1 m 47 s 404 ms
     -- INSERT INTO  [2024-11-28 20:58:28] 27,124,321 rows affected in 7 m 25 s 702 ms
 
-    RAISE NOTICE '[%] T010: INSERT INTO staging.product_status_history 1ST PART :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T010: INSERT INTO staging.product_status_history 1ST PART:   DONE',CLOCK_TIMESTAMP();
 
     WITH last_product_load AS (SELECT "retailerId", "coreProductId", MAX(load_date) AS load_date
                                FROM staging.migstatus_products_filtered
@@ -242,7 +244,7 @@ BEGIN
              INNER JOIN last_retailer_load USING ("retailerId")
     WHERE load_date < last_load_date; -- [2024-11-28 20:59:50] 41,128 rows affected in 9 s 328 ms
 
-    RAISE NOTICE '[%] T011: INSERT INTO staging.product_status_history 2ND PART :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T011: INSERT INTO staging.product_status_history 2ND PART:   DONE',CLOCK_TIMESTAMP();
 
     DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
 
@@ -252,7 +254,7 @@ BEGIN
              LEFT OUTER JOIN staging.product_status_history USING ("productId")
     WHERE product_status_history."productId" IS NULL; --[2024-11-28 21:06:46] 703,455 rows affected in 33 s 789 ms
 
-    RAISE NOTICE '[%] T012: migstatus_productStatuses_additional :   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T012: CREATE migstatus_productStatuses_additional:   DONE',CLOCK_TIMESTAMP();
 
 
     CREATE UNIQUE INDEX migstatus_productStatuses_additional_productid_uindex
@@ -264,7 +266,7 @@ BEGIN
                                                            date);
     CREATE INDEX migstatus_productStatuses_additional_productid_statusindex
         ON staging."migstatus_productStatuses_additional" (status);
-    RAISE NOTICE '[%] T013: migstatus_productStatuses_additional INDEXES :   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T013: CREATE migstatus_productStatuses_additional INDEXES:   DONE',CLOCK_TIMESTAMP();
 
     WITH delisted AS (SELECT "retailerId",
                              "coreProductId",
@@ -290,7 +292,7 @@ BEGIN
     WHERE product_status_history."productId" IS NULL;
     -- [2024-11-28 21:12:02] 703,224 rows affected in 30 s 11 ms
 
-    RAISE NOTICE '[%] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL) :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL):   DONE',CLOCK_TIMESTAMP();
 
 /*
 after the update
@@ -377,14 +379,14 @@ after the update
     FROM products
              INNER JOIN ins_prod_selection USING (id);
 -- [2024-11-28 21:13:47] 104,440 rows affected in 14 s 760 ms
-    RAISE NOTICE '[%] T015: staging.migstatus_ins_products :   CREATED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T015: CREATE staging.migstatus_ins_products:   DONE',CLOCK_TIMESTAMP();
 
     INSERT
     INTO products
     SELECT*
     FROM staging.migstatus_ins_products;
 --3,310,580 rows affected in 31 m 23 s 196 ms
-    RAISE NOTICE '[%] T016: INSERT INTO PRODUCTS :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T016: INSERT INTO PRODUCTS:   DONE',CLOCK_TIMESTAMP();
 
 
     UPDATE staging.product_status_history AS history
@@ -394,10 +396,7 @@ after the update
       AND history."coreProductId" = ins_products."coreProductId"
       AND history.date = ins_products.date;
 -- 2,752,620 rows affected in 9 m 4 s 600 ms
-    RAISE NOTICE '[%] T017: UPDATED staging.product_status_history :   COMPLETED',CLOCK_TIMESTAMP();
-
-    CREATE TABLE IF NOT EXISTS staging.data_corr_ret_mig_prod_status_bck AS TABLE public."productStatuses"
-        WITH NO DATA;
+    RAISE NOTICE '[%] T017: UPDATED staging.product_status_history:   DONE',CLOCK_TIMESTAMP();
 
     WITH deleted AS (
         DELETE FROM "productStatuses"
@@ -409,7 +408,7 @@ after the update
     INTO staging.data_corr_ret_mig_prod_status_bck
     SELECT *
     FROM deleted;
-    RAISE NOTICE '[%] T018: DELETE FROM "productStatuses" :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T018: DELETE FROM "productStatuses":   DONE',CLOCK_TIMESTAMP();
 
     INSERT INTO "productStatuses"
     SELECT COALESCE("productStatuses".id, NEXTVAL('"productStatuses_id_seq"'::regclass)) AS id,
@@ -423,7 +422,7 @@ after the update
              LEFT OUTER JOIN public."productStatuses" USING ("productId");
     --278,253,630 rows affected in 22 m 39 s 456 ms
     --288,009,947 rows affected in 22 m 54 s 758 ms
-    RAISE NOTICE '[%] T019: INSERT INTO "productStatuses" :   COMPLETED',CLOCK_TIMESTAMP();
+    RAISE NOTICE '[%] T019: INSERT INTO "productStatuses":   DONE',CLOCK_TIMESTAMP();
 
     UPDATE staging.migration_migrated_retailers
     SET migration_end=CLOCK_TIMESTAMP()
@@ -440,9 +439,18 @@ SHOW WORK_MEM;
 
 SELECT staging.migrate_retailer(1); -- 703.224 De-listed
 
+SELECT *
+FROM staging.migstatus_ins_products;
+
+SELECT status, COUNT(*)
+FROM staging.product_status_history
+GROUP BY status;
+
+/*  re-create constraints on "productStatuses" */
 CREATE UNIQUE INDEX productstatuses_productid_uindex
     ON public."productStatuses" ("productId");
 
+/*  due to delete in productStatuses    */
 VACUUM FULL "productStatuses";
 
 
