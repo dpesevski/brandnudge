@@ -725,19 +725,18 @@ BEGIN
     RETURNING load_id INTO _load_id;
 
     _start_ts := CLOCK_TIMESTAMP();
-    IF flag = 'create-products' THEN
+    /*IF flag = 'create-products' THEN
 
         IF JSON_TYPEOF(fetched_data) = 'array' THEN
             RAISE EXCEPTION 'old create-products structure, with no retailer object';
         ELSE
             PERFORM staging.load_retailer_data_base(fetched_data, _load_id);
         END IF;
-
-
-    ELSEIF flag = 'create-products-pp' THEN
+    ELSEIF flag = 'create-products-pp' THEN*/
+    IF flag = 'create-products-pp' THEN
         PERFORM staging.load_retailer_data_pp(fetched_data, _load_id);
     ELSE
-        RAISE EXCEPTION 'no flag provided';
+        RAISE EXCEPTION 'no valid flag provided';
     END IF;
 
     UPDATE staging.load
