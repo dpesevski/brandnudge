@@ -22,5 +22,12 @@
       <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-test-for-migration.cluster-ro-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge-dev</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="PROD-WRITE-ACCESS!!" uuid="7a883bc4-02a4-4aa2-a4b8-4a3641f69224">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>

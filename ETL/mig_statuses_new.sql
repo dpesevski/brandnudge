@@ -1,10 +1,3 @@
-SET work_mem = '4GB';
-SET max_parallel_workers_per_gather = 4;
-SHOW WORK_MEM;
-
-/*  TODO:   REMOVE BEFORE COMMITING TO REPO */
---TRUNCATE TABLE staging.migration_migrated_retailers;
-
 CREATE OR REPLACE FUNCTION staging.migrate_retailer(id INTEGER) RETURNS void
     LANGUAGE plpgsql
 AS
@@ -450,5 +443,41 @@ after the update
 END
 $$;
 
+SET work_mem = '4GB';
+SET max_parallel_workers_per_gather = 4;
+SHOW WORK_MEM;
+
+/*  TODO:   REMOVE BEFORE COMMITING TO REPO */
+--TRUNCATE TABLE staging.migration_migrated_retailers;
+
 SELECT staging.migrate_retailer(1); -- 703.224 De-listed
 
+VACUUM "productStatuses";
+
+
+/*
+brandnudge-dev.public> SELECT staging.migrate_retailer(1)
+[2024-11-29 15:13:21.31912+00] T000: migrate_retailer 1:   STARTED
+table "migration_product_status" does not exist, skipping
+[2024-11-29 15:17:59.112371+00] T001: staging.migration_product_status:   CREATED
+[2024-11-29 15:18:56.011565+00] T002: Cleaning of extra `De-listed` records :   STARTED
+[2024-11-29 15:20:46.481353+00] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted :   COMPLETED
+[2024-11-29 15:21:07.165019+00] T004: INSERT INTO staging.data_corr_status_deleted_productsData :   COMPLETED
+[2024-11-29 15:21:46.332277+00] T005: INSERT INTO staging.data_corr_status_deleted_products :   COMPLETED
+[2024-11-29 15:21:47.240964+00] T006: Cleaning of extra `De-listed` records :   COMPLETED
+table "migstatus_products_filtered" does not exist, skipping
+[2024-11-29 15:23:59.958801+00] T007: staging.migstatus_products_filtered :   CREATED
+[2024-11-29 15:24:18.043464+00] T008: migstatus_products_filtered_retailerId_coreProductId_date_index :   CREATED
+[2024-11-29 15:24:18.073858+00] T009: DELETE from staging.product_status_history :   COMPLETED
+[2024-11-29 15:30:19.172783+00] T010: INSERT INTO staging.product_status_history 1ST PART :   COMPLETED
+[2024-11-29 15:30:29.025444+00] T011: INSERT INTO staging.product_status_history 2ND PART :   COMPLETED
+table "migstatus_productStatuses_additional" does not exist, skipping
+[2024-11-29 15:30:35.885308+00] T012: migstatus_productStatuses_additional :   CREATED
+[2024-11-29 15:30:37.014491+00] T013: migstatus_productStatuses_additional INDEXES :   CREATED
+[2024-11-29 15:30:54.991972+00] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL) :   COMPLETED
+table "migstatus_ins_products" does not exist, skipping
+[2024-11-29 15:31:22.192103+00] T015: staging.migstatus_ins_products :   CREATED
+[2024-11-29 15:33:09.049099+00] T016: INSERT INTO PRODUCTS :   COMPLETED
+[2024-11-29 15:33:10.272672+00] T017: UPDATED staging.product_status_history :   COMPLETED
+[2024-11-29 15:50:41.276239+00] T018: DELETE FROM "productStatuses" :   COMPLETED
+*/
