@@ -1,15 +1,33 @@
+CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
+(
+    "retailerId"      integer PRIMARY KEY,
+    "migration_start" timestamp DEFAULT NOW(),
+    "migration_end"   timestamp
+);
+ALTER TABLE public."productStatuses"
+    DROP CONSTRAINT "productStatuses_pkey",
+    ADD CONSTRAINT "productStatuses_pkey" UNIQUE (id) DEFERRABLE INITIALLY DEFERRED,
+    ALTER CONSTRAINT "productstatuses_products_id_fk" DEFERRABLE INITIALLY DEFERRED;--[2024-11-29 18:16:42] completed in 2 m 36 s 385 ms
+
+DROP INDEX productstatuses_productid_uindex;--[2024-11-29 18:16:42] completed in 188 ms
+
+CREATE TABLE IF NOT EXISTS staging.product_status_history
+(
+    "retailerId"    integer NOT NULL,
+    "coreProductId" integer NOT NULL,
+    date            date    NOT NULL,
+    "productId"     integer,
+    status          text,
+    CONSTRAINT product_status_history_pk
+        PRIMARY KEY ("retailerId", "coreProductId", date) DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId") DEFERRABLE INITIALLY DEFERRED
+);
+
 CREATE OR REPLACE FUNCTION staging.migrate_retailer(id INTEGER) RETURNS void
     LANGUAGE plpgsql
 AS
 $$
 BEGIN
-
-    CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
-    (
-        "retailerId"      integer PRIMARY KEY,
-        "migration_start" timestamp DEFAULT NOW(),
-        "migration_end"   timestamp
-    );
 
     IF EXISTS (SELECT * FROM staging.migration_migrated_retailers WHERE id = migrate_retailer.id) THEN
         RAISE EXCEPTION 'retailer %s, already migrated', migrate_retailer.id;
@@ -185,12 +203,12 @@ BEGIN
         "productId"     integer,
         status          text,
         CONSTRAINT product_status_history_pk
-            PRIMARY KEY ("retailerId", "coreProductId", date)
+            PRIMARY KEY ("retailerId", "coreProductId", date) DEFERRABLE INITIALLY DEFERRED,
+        CONSTRAINT product_status_history_productid_uindex UNIQUE ("productId") DEFERRABLE INITIALLY DEFERRED
     );
 
 
-    CREATE UNIQUE INDEX IF NOT EXISTS product_status_history_productid_uindex
-        ON staging.product_status_history ("productId");
+    --CREATE UNIQUE INDEX IF NOT EXISTS product_status_history_productid_uindex ON staging.product_status_history ("productId");
 
     DELETE
     FROM staging.product_status_history
@@ -452,7 +470,10 @@ SHOW WORK_MEM;
 
 SELECT staging.migrate_retailer(1); -- 703.224 De-listed
 
-VACUUM "productStatuses";
+CREATE UNIQUE INDEX productstatuses_productid_uindex
+    ON public."productStatuses" ("productId");
+
+VACUUM FULL "productStatuses";
 
 
 /*
