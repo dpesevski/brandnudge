@@ -84,6 +84,30 @@ FROM staging.retailer_daily_data
 ORDER BY created_at DESC;
  */
 SET WORK_MEM = '2GB';
+
+WITH stats AS (SELECT "retailerId",
+                      dates.date,
+                      COUNT(*)                                                AS product_count,
+                      MIN(products."createdAt")                               AS started_at,
+                      MAX(products."createdAt")                                  last_update_at,
+                      (MAX(products."createdAt") - MIN(products."createdAt")) AS load_time
+               FROM products
+                        INNER JOIN dates ON (dates.id = products."dateId")
+               WHERE DATES.date >= '2024-11-28'
+--WHERE "dateId" = 30013
+               GROUP BY 1, 2)
+SELECT "retailerId",
+       retailers.name                                                        AS retailer_name,
+       date,
+       product_count,
+       TO_CHAR(started_at, 'YYYY-MM-DD HH24:MI:SS')                          AS started_at,
+       --TO_CHAR(last_update_at, 'YYYY-MM-DD HH24:MI:SS')                      AS last_update_at,
+       EXTRACT(HOURS FROM load_time)
+           || ':' || TO_CHAR(EXTRACT(MINUTES FROM load_time), 'fm00')
+           || ':' || TO_CHAR(ROUND(EXTRACT(SECONDS FROM load_time)), 'fm00') AS execution_time
+FROM stats
+         INNER JOIN retailers ON (retailers.id = stats."retailerId");
+
 WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY load_id, "retailerId", "sourceType")
