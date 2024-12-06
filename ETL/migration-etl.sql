@@ -1,3 +1,5 @@
+CREATE INDEX IF NOT EXISTS products_retailerId_coreProductId_date_index ON products ("retailerId", "coreProductId", "date");
+
 CREATE INDEX IF NOT EXISTS products_retailerId_index ON products ("retailerId");
 --[2024-11-28 15:15:32] completed in 6 m 3 s 346 ms
 
@@ -386,8 +388,12 @@ CREATE TYPE staging.retailer_data_pp AS
     "isNpd"                 boolean,
     size                    text,
     "sizeUnit"              text,
-    "pricePerWeight"        text
+    "pricePerWeight"        text,
+
+    "reviewsCount"          text,
+    "reviewsStars"          text
 );
+
 DROP TYPE IF EXISTS staging.t_promotion_mb CASCADE;
 CREATE TYPE staging.t_promotion_mb AS
 (
@@ -858,6 +864,11 @@ BEGIN
                                       LEFT(product.size, 255)                               AS size,
                                       LEFT("sizeUnit", 255)                                 AS "sizeUnit",
                                       LEFT("pricePerWeight", 255)                           AS "pricePerWeight",
+
+
+                                      "reviewsCount"::integer                               AS "reviewsCount",
+                                      fn_to_float("reviewsStars")                           AS "reviewsStars",
+
                                       ROW_NUMBER()
                                       OVER (PARTITION BY "sourceId" ORDER BY "skuURL" DESC) AS rownum -- use only the first sourceId record
                                FROM JSON_POPULATE_RECORDSET(NULL::staging.retailer_data_pp,
@@ -909,6 +920,10 @@ BEGIN
            size,
            "sizeUnit",
            "pricePerWeight",
+
+           "reviewsCount",
+           "reviewsStars",
+
            ROW_NUMBER() OVER ()                      AS index
     FROM tmp_daily_data_pp
     WHERE rownum = 1;
@@ -961,8 +976,10 @@ BEGIN
            dd_products."originalPrice"                                         AS "promotedPrice",
            dd_products."productInStock",
            TRUE                                                                AS "productInListing",
-           NULL::integer                                                       AS "reviewsCount",
-           NULL::float                                                         AS "reviewsStars",
+
+           dd_products."reviewsCount",
+           dd_products."reviewsStars",
+
            NULL                                                                AS "eposId",
            COALESCE(trsf_promo.is_multibuy, FALSE)                             AS multibuy,
            COALESCE(prod_barcode."coreProductId",

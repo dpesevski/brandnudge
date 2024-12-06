@@ -86,28 +86,46 @@ ORDER BY created_at DESC;
 SET WORK_MEM = '2GB';
 
 WITH stats AS (SELECT "retailerId",
-                      dates.date,
+                      dates.date::date                                        AS load_date,
                       COUNT(*)                                                AS product_count,
                       MIN(products."createdAt")                               AS started_at,
                       MAX(products."createdAt")                                  last_update_at,
                       (MAX(products."createdAt") - MIN(products."createdAt")) AS load_time
                FROM products
                         INNER JOIN dates ON (dates.id = products."dateId")
-               WHERE DATES.date >= '2024-11-28'
+               WHERE DATES.date >= '2024-12-06' --'2024-11-28'
 --WHERE "dateId" = 30013
                GROUP BY 1, 2)
 SELECT "retailerId",
        retailers.name                                                        AS retailer_name,
-       date,
+       load_date,
        product_count,
        TO_CHAR(started_at, 'YYYY-MM-DD HH24:MI:SS')                          AS started_at,
-       --TO_CHAR(last_update_at, 'YYYY-MM-DD HH24:MI:SS')                      AS last_update_at,
+       TO_CHAR(last_update_at, 'YYYY-MM-DD HH24:MI:SS')                      AS last_update_at,
+       --EXTRACT(EPOCH FROM load_time)                                         AS execution_time_seconds,
+    /*  CASE
+          WHEN EXTRACT(HOURS FROM load_time) = 0 THEN ''
+          ELSE EXTRACT(HOURS FROM load_time) ::text || ' hrs ' END ||
+      CASE
+          WHEN EXTRACT(MINUTES FROM load_time) = 0 THEN ''
+          ELSE TO_CHAR(EXTRACT(MINUTES FROM load_time), 'fm00') || ' min '
+          END
+          || TO_CHAR(ROUND(EXTRACT(SECONDS FROM load_time)), 'fm00')   || ' seconds'      AS execution_time_fmt2,*/
+
        EXTRACT(HOURS FROM load_time)
            || ':' || TO_CHAR(EXTRACT(MINUTES FROM load_time), 'fm00')
            || ':' || TO_CHAR(ROUND(EXTRACT(SECONDS FROM load_time)), 'fm00') AS execution_time
 FROM stats
-         INNER JOIN retailers ON (retailers.id = stats."retailerId");
+         INNER JOIN retailers ON (retailers.id = stats."retailerId")
+ORDER BY last_update_at DESC;
 
+
+/*
+https://brand-nudge-group.slack.com/archives/D0689A94DTM/p1732992445064059
+Matt:
+To confirm - retailers still using the old "products" are asda, sainsburys, ocado, waitrose, amazon_fresh.
+All others are using "products_pp" and could in theory be moved straight to "products_core" (the new endpoint).
+*/
 WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
                   FROM staging.debug_products
                   GROUP BY load_id, "retailerId", "sourceType")

@@ -2,6 +2,7 @@ SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
 SHOW WORK_MEM;
 
+
 /*  create tables for backup of data related to extra De-listed records   */
 CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
     WITH NO DATA;
@@ -15,7 +16,7 @@ CREATE TABLE IF NOT EXISTS staging.data_corr_ret_mig_prod_status_bck AS TABLE pu
     WITH NO DATA;
 
 /*  migrate_retailer    */
-DROP TABLE IF EXISTS staging.product_status_history;
+--DROP TABLE IF EXISTS staging.product_status_history;
 CREATE TABLE IF NOT EXISTS staging.product_status_history
 (
     "retailerId"    integer NOT NULL,
@@ -38,15 +39,48 @@ CREATE TABLE IF NOT EXISTS staging.migration_migrated_retailers
 
 --RAISE NOTICE '[%] T000: migrate_retailer %:   STARTED',CLOCK_TIMESTAMP(), 1;
 INSERT INTO staging.migration_migrated_retailers ("retailerId")
-VALUES (1);
+SELECT id
+FROM retailers
+WHERE id NOT IN (1, 2, 3, 8, 10, 13);
 
+/*
+NON-PP RETAILERS
++--+------------+
+|id|name        |
++--+------------+
+|2 |asda        |
+|3 |sainsburys  |
+|8 |ocado       |
+|10|waitrose    |
+|13|amazon_fresh|
++--+------------+
+*/
+
+SELECT *
+FROM staging.migration_migrated_retailers;
+/*
+retailerId IN
+  (4, 9, 11, 48, 81, 114, 115, 159, 345, 378, 411, 444, 477, 510, 543, 576, 609, 642, 675, 708, 741, 774, 775, 807,
+   840, 873, 906, 907, 908, 909, 910, 911, 912, 913, 914, 915, 916, 939, 972, 1005, 1006, 1007, 1008, 1009, 1010,
+   1011, 1012, 1013, 1038, 1071, 1072, 1104, 1137, 1170, 1203, 1237, 1238, 1269, 1302, 1335, 1336, 1368, 1401, 1434,
+   1467, 1500, 1533, 1534, 1535, 1536, 1537, 1538)
+*/
+
+
+CREATE INDEX IF NOT EXISTS products_retailerId_coreProductId_date_index ON products ("retailerId", "coreProductId", "date");
+--[2024-12-06 14:59:31] completed in 6 m 40 s 492 ms
+CREATE INDEX IF NOT EXISTS products_retailerId_index ON products ("retailerId");
+--[2024-11-28 15:15:32] completed in 6 m 3 s 346 ms
+--[2024-12-06 15:05:15] completed in 5 m 43 s 342 ms
+
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 DROP TABLE IF EXISTS staging.migration_product_status;
 CREATE TABLE staging.migration_product_status AS
 SELECT *
 FROM "productStatuses"
          INNER JOIN (SELECT products.id AS "productId", "retailerId", "coreProductId", "date"::date
                      FROM products
-                     WHERE "retailerId" = 1) AS products
+                              INNER JOIN staging.migration_migrated_retailers USING ("retailerId")) AS products
                     USING ("productId");
 --[2024-11-28 15:22:52] 27,185,505 rows affected in 6 m 53 s 33 ms
 
@@ -174,9 +208,12 @@ CREATE INDEX IF NOT EXISTS migstatus_products_filtered_retailerId_coreProductId_
 --[2024-11-28 20:23:00] completed in 17 s 538 ms
 --RAISE NOTICE '[%] T008: CREATE migstatus_products_filtered_retailerId_coreProductId_date_index:   DONE',CLOCK_TIMESTAMP();
 
+/*
+-ONLY WHEN MIGRATING SAME RETAILER AGAIN
 DELETE
 FROM staging.product_status_history
 WHERE "retailerId" = 1;
+ */
 --27,156,189 rows affected in 1 m 25 s 103 ms
 --RAISE NOTICE '[%] T009: DELETE from staging.product_status_history:   DONE',CLOCK_TIMESTAMP();
 
@@ -399,7 +436,7 @@ WITH deleted AS (
     DELETE FROM "productStatuses"
         USING staging.migration_product_status WHERE
             "productStatuses"."productId" = migration_product_status."productId"
-                AND migration_product_status."retailerId" = 1
+        --AND migration_product_status."retailerId" = 1 OBSOLETE,  migration_product_status has >>all and only<< the retailers being migrated
         RETURNING "productStatuses".*)
 INSERT
 INTO staging.data_corr_ret_mig_prod_status_bck
@@ -425,7 +462,7 @@ FROM staging.product_status_history
 ALTER TABLE public."productStatuses"
     DROP CONSTRAINT "productStatuses_pkey",
     DROP CONSTRAINT productstatuses_products_id_fk;
-DROP INDEX productstatuses_productid_uindex;
+DROP INDEX "productStatuses_productId_uq";
 
 
 
@@ -446,12 +483,11 @@ SELECT id,
 FROM staging.migret_ins_productstatuses1;
 --[2024-11-29 20:45:38] 27,115,721 rows affected in 1 m 48 s 751 ms
 
-
 CREATE TABLE staging.migret_ins_productstatuses2 AS
 SELECT "productId",
        product_status_history.status
 FROM staging.product_status_history
-         LEFT OUTER JOIN public."productStatuses" USING ("productId")
+         LEFT OUTER JOIN staging.data_corr_ret_mig_prod_status_bck AS "productStatuses" USING ("productId")
 WHERE "productStatuses".id IS NULL;
 --[2024-11-29 20:46:51] 54,197 rows affected in 55 s 304 ms
 INSERT INTO "productStatuses"("productId",
@@ -484,10 +520,12 @@ ALTER TABLE public."productStatuses"
         FOREIGN KEY ("productId") REFERENCES public.products;
 --[2024-11-29 21:05:35] completed in 9 m 31 s 48 ms
 
-
+/*
+not relevant, as it only updates retailers from current migration
 UPDATE staging.migration_migrated_retailers
-SET migration_end=CLOCK_TIMESTAMP()
+SET migration_end=CLOCK_TIMESTAMP();
 WHERE "retailerId" = 1;
+*/
 
 /*  due to delete in productStatuses    */
 VACUUM FULL "productStatuses";
