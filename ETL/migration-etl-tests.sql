@@ -117,6 +117,7 @@ SELECT "retailerId",
            || ':' || TO_CHAR(ROUND(EXTRACT(SECONDS FROM load_time)), 'fm00') AS execution_time
 FROM stats
          INNER JOIN retailers ON (retailers.id = stats."retailerId")
+--WHERE "retailerId" IN ( 3, 8, 1401, 1500)
 ORDER BY last_update_at DESC;
 
 

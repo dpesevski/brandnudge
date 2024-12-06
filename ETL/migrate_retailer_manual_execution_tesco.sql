@@ -83,6 +83,7 @@ FROM "productStatuses"
                               INNER JOIN staging.migration_migrated_retailers USING ("retailerId")) AS products
                     USING ("productId");
 --[2024-11-28 15:22:52] 27,185,505 rows affected in 6 m 53 s 33 ms
+--
 
 --RAISE NOTICE '[%] T001: CREATE staging.migration_product_status:   DONE',CLOCK_TIMESTAMP();
 
@@ -280,7 +281,7 @@ DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
 CREATE TABLE staging."migstatus_productStatuses_additional" AS
 SELECT "productStatuses".*
 FROM staging.migration_product_status AS "productStatuses"
-         LEFT OUTER JOIN staging.product_status_history USING ("productId")
+         LEFT OUTER JOIN staging.product_status_history USING ("productId")-- todo: limit only to the retailers currently being migrated?
 WHERE product_status_history."productId" IS NULL;
 --[2024-11-28 21:06:46] 703,455 rows affected in 33 s 789 ms
 
@@ -342,7 +343,7 @@ WITH delisted AS (SELECT "retailerId",
                          "coreProductId",
                          "date"                                                                  AS delisted_date,
                          ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId", "date" ) AS rownum
-                  FROM staging.product_status_history
+                  FROM staging.product_status_history -- todo: limit only to the retailers currently being migrated? NOT NEEDED, as already migrated retailers do not have records where productId is null.
                   WHERE "productId" IS NULL),
      last_load_product AS (SELECT delisted."retailerId",
                                   delisted."coreProductId",
@@ -519,6 +520,14 @@ ALTER TABLE public."productStatuses"
     ADD CONSTRAINT productstatuses_products_id_fk
         FOREIGN KEY ("productId") REFERENCES public.products;
 --[2024-11-29 21:05:35] completed in 9 m 31 s 48 ms
+
+CREATE TABLE migration.mig_prod_stat_multiple_in_same_day_2nd AS
+WITH missing_product_statuses AS (SELECT data_corr_ret_mig_prod_status_bck.*
+                                  FROM staging.data_corr_ret_mig_prod_status_bck
+                                           LEFT OUTER JOIN "productStatuses" USING ("productId")
+                                  WHERE "productStatuses"."productId" IS NULL)
+SELECT *
+FROM missing_product_statuses;
 
 /*
 not relevant, as it only updates retailers from current migration
