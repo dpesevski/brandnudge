@@ -80,7 +80,8 @@ SELECT *
 FROM "productStatuses"
          INNER JOIN (SELECT products.id AS "productId", "retailerId", "coreProductId", "date"::date
                      FROM products
-                              INNER JOIN staging.migration_migrated_retailers USING ("retailerId")) AS products
+                     --         INNER JOIN staging.migration_migrated_retailers USING ("retailerId")
+                     WHERE "retailerId" NOT IN (1, 2, 3, 8, 10, 13)) AS products
                     USING ("productId");
 --[2024-11-28 15:22:52] 27,185,505 rows affected in 6 m 53 s 33 ms
 --
@@ -88,12 +89,15 @@ FROM "productStatuses"
 --RAISE NOTICE '[%] T001: CREATE staging.migration_product_status:   DONE',CLOCK_TIMESTAMP();
 
 CREATE UNIQUE INDEX migration_product_status_productid_uindex
-    ON staging.migration_product_status ("productId");--[2024-11-28 15:23:25] completed in 16 s 282 ms
+    ON staging.migration_product_status ("productId");
+--[2024-11-28 15:23:25] completed in 16 s 282 ms
 
 CREATE INDEX migration_product_status_retailer_coreproduct_date_index
     ON staging.migration_product_status ("retailerId",
                                          "coreProductId",
-                                         date);--[2024-11-28 15:23:49] completed in 23 s 775 ms
+                                         date);
+--[2024-11-28 15:23:49] completed in 23 s 775 ms
+
 CREATE INDEX migration_product_status_status_index
     ON staging.migration_product_status (status);
 --[2024-11-28 15:24:06] completed in 16 s 633 ms
