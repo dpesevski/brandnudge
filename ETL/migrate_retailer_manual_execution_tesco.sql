@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS products_retailerId_index ON products ("retailerId");
 --[2024-11-28 15:15:32] completed in 6 m 3 s 346 ms
 --[2024-12-06 15:05:15] completed in 5 m 43 s 342 ms
 
-/*  TODO: CONTINUE FROM HERE   <<<<    */
+
 DROP TABLE IF EXISTS staging.migration_product_status;
 CREATE TABLE staging.migration_product_status AS
 SELECT *
@@ -84,29 +84,32 @@ FROM "productStatuses"
                      WHERE "retailerId" NOT IN (1, 2, 3, 8, 10, 13)) AS products
                     USING ("productId");
 --[2024-11-28 15:22:52] 27,185,505 rows affected in 6 m 53 s 33 ms
---
+--[2024-12-06 21:06:51] 158,593,065 rows affected in 12 m 16 s 564 ms
 
 --RAISE NOTICE '[%] T001: CREATE staging.migration_product_status:   DONE',CLOCK_TIMESTAMP();
 
 CREATE UNIQUE INDEX migration_product_status_productid_uindex
     ON staging.migration_product_status ("productId");
 --[2024-11-28 15:23:25] completed in 16 s 282 ms
+--[2024-12-06 21:08:08] completed in 1 m 16 s 108 ms
 
 CREATE INDEX migration_product_status_retailer_coreproduct_date_index
     ON staging.migration_product_status ("retailerId",
                                          "coreProductId",
                                          date);
 --[2024-11-28 15:23:49] completed in 23 s 775 ms
+--[2024-12-06 21:10:02] completed in 1 m 54 s 142 ms
 
 CREATE INDEX migration_product_status_status_index
     ON staging.migration_product_status (status);
 --[2024-11-28 15:24:06] completed in 16 s 633 ms
+--[2024-12-06 21:11:28] completed in 1 m 25 s 322 ms
 
 --[2024-11-28 16:36:27] completed in 4 m 29 s 139 ms
 
 /*  DELETE EXTRA De-listed records  */
 --RAISE NOTICE '[%] T002: Cleaning of extra `De-listed` records :   STARTED',CLOCK_TIMESTAMP();
-
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 WITH deleted AS (
     WITH product_status_prev AS (SELECT *,
                                         LAG("productId")
@@ -126,6 +129,7 @@ INTO staging.data_corr_status_extra_delisted_deleted
 SELECT *
 FROM deleted;
 --[2024-11-28 17:34:43] 94,805 rows affected in 2 m 11 s 12 ms
+--
 
 --RAISE NOTICE '[%] T003: INSERT INTO staging.data_corr_status_extra_delisted_deleted:   DONE',CLOCK_TIMESTAMP();
 
