@@ -1,7 +1,7 @@
 SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
 SHOW WORK_MEM;
-
+SHOW max_parallel_workers_per_gather;
 
 /*  create tables for backup of data related to extra De-listed records   */
 CREATE TABLE IF NOT EXISTS staging.data_corr_status_extra_delisted_deleted AS TABLE "productStatuses"
@@ -453,28 +453,37 @@ ALTER TABLE staging.migstatus_delisted
     ADD CONSTRAINT migstatus_delisted_pk
         PRIMARY KEY (delisted_date, "coreProductId", "retailerId");
 
+CREATE TABLE staging.migstatus_last_load_product AS
+SELECT delisted."retailerId",
+       delisted."coreProductId",
+       delisted.delisted_date,
+       MAX(product.load_date) AS load_date
+FROM staging.migstatus_delisted AS delisted
+         INNER JOIN staging.migstatus_products_filtered AS product
+                    ON (product."retailerId" = delisted."retailerId" AND
+                        product."coreProductId" = delisted."coreProductId" AND
+                        product.load_date < delisted.delisted_date)
+GROUP BY delisted."retailerId",
+         delisted."coreProductId",
+         delisted.delisted_date;
+--[2024-12-06 23:46:00] 2,643,250 rows affected in 48 s 399 ms
 
-/*  TODO: CONTINUE FROM HERE   <<<<    */
+CREATE TABLE staging.migstatus_ins_prod_selection AS
+SELECT "productId" AS id,
+       delisted_date,
+       dates.id    AS delisted_date_id
+FROM staging.migstatus_products_filtered
+         INNER JOIN staging.migstatus_last_load_product AS last_load_product
+                    USING ("retailerId", "coreProductId", load_date)
+         LEFT OUTER JOIN dates ON (dates."date" = delisted_date);
+--[2024-12-06 23:48:38] 2,643,250 rows affected in 11 s 285 ms
+alter table staging.migstatus_ins_prod_selection
+    add constraint migstatus_ins_prod_selection_pk
+        primary key (id);
+
+
 DROP TABLE IF EXISTS staging.migstatus_ins_products;
 CREATE TABLE staging.migstatus_ins_products AS
-WITH last_load_product AS (SELECT delisted."retailerId",
-                                  delisted."coreProductId",
-                                  delisted.delisted_date,
-                                  MAX(product.load_date) AS load_date
-                           FROM staging.migstatus_delisted AS delisted
-                                    INNER JOIN staging.migstatus_products_filtered AS product
-                                               ON (product."retailerId" = delisted."retailerId" AND
-                                                   product."coreProductId" = delisted."coreProductId" AND
-                                                   product.load_date < delisted.delisted_date)
-                           GROUP BY delisted."retailerId",
-                                    delisted."coreProductId",
-                                    delisted.delisted_date),
-     ins_prod_selection AS (SELECT "productId" AS id,
-                                   delisted_date,
-                                   dates.id    AS delisted_date_id
-                            FROM staging.migstatus_products_filtered
-                                     INNER JOIN last_load_product USING ("retailerId", "coreProductId", load_date)
-                                     LEFT OUTER JOIN dates ON (dates."date" = delisted_date))
 SELECT NEXTVAL('products_id_seq'::regclass) AS id,
        "sourceType",
        ean,
@@ -520,13 +529,13 @@ SELECT NEXTVAL('products_id_seq'::regclass) AS id,
        "isNpd",
        NULL::integer                        AS load_id
 FROM products
-         INNER JOIN ins_prod_selection USING (id);
--- [2024-11-28 21:13:47] 104,440 rows affected in 14 s 760 ms
---
+         INNER JOIN staging.migstatus_ins_prod_selection AS ins_prod_selection USING (id);
+--[2024-11-28 21:13:47] 104,440 rows affected in 14 s 760 ms
+--[2024-12-06 23:54:47] 2,643,250 rows affected in 3 m 53 s 669 ms
 
 
 --RAISE NOTICE '[%] T015: CREATE staging.migstatus_ins_products:   DONE',CLOCK_TIMESTAMP();
-
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 INSERT
 INTO products
 SELECT*
