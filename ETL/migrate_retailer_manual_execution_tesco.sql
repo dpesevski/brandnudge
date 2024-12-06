@@ -359,12 +359,13 @@ ALTER TABLE staging.product_status_history
 
 ALTER TABLE staging.product_status_history
     DROP CONSTRAINT product_status_history_productid_uindex;
-/*  TODO: CONTINUE FROM HERE   <<<<    */
+
 INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
 SELECT "retailerId", "coreProductId", date, "productId", status
 FROM staging.tmp_product_status_history;
---
+--[2024-12-06 22:37:30] 160,985,291 rows affected in 7 m 34 s 95 ms
 
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 ALTER TABLE staging.product_status_history
     ADD CONSTRAINT product_status_history_pk
         PRIMARY KEY ("retailerId", "coreProductId", date);
