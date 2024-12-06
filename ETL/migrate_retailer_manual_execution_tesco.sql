@@ -365,15 +365,63 @@ SELECT "retailerId", "coreProductId", date, "productId", status
 FROM staging.tmp_product_status_history;
 --[2024-12-06 22:37:30] 160,985,291 rows affected in 7 m 34 s 95 ms
 
+CREATE TABLE staging.tmp_dup_prod_stat_history AS
+WITH dup AS (SELECT *,
+                    ROW_NUMBER()
+                    OVER (PARTITION BY "retailerId", "coreProductId", date ORDER BY "productId" DESC NULLS LAST) AS rownum
+             FROM staging.product_status_history)
+SELECT "retailerId",
+       "coreProductId",
+       date,
+       "productId",
+       status
+FROM dup
+WHERE rownum > 1;
+
+CREATE TABLE staging.tmp_mig2nd_fix_dup_status AS
+WITH ins_ AS (SELECT *,
+                     ROW_NUMBER()
+                     OVER (PARTITION BY "retailerId", "coreProductId", date ORDER BY CASE
+                                                                                         WHEN status = 'De-listed'
+                                                                                             THEN 99
+                                                                                         ELSE 1 END,
+                         "productId" DESC NULLS LAST) AS rownum
+              FROM (SELECT "retailerId", "coreProductId", date, "productId" AS tmp_productId
+                    FROM staging.tmp_dup_prod_stat_history) AS tmp
+                       INNER JOIN staging.product_status_history USING ("retailerId", "coreProductId", date)
+              ORDER BY "retailerId", "coreProductId", date)
+SELECT "retailerId",
+       "coreProductId",
+       date,
+       "productId",
+       status
+FROM ins_
+WHERE rownum = 1;
+
+DELETE
+FROM staging.product_status_history USING staging.tmp_dup_prod_stat_history AS dup
+WHERE product_status_history."retailerId" = dup."retailerId"
+  AND product_status_history."coreProductId" = dup."coreProductId"
+  AND product_status_history.date = dup.date;
+
+INSERT INTO staging.product_status_history
+SELECT "retailerId",
+       "coreProductId",
+       date,
+       "productId",
+       status
+FROM staging.tmp_mig2nd_fix_dup_status;
+
 /*  TODO: CONTINUE FROM HERE   <<<<    */
 ALTER TABLE staging.product_status_history
     ADD CONSTRAINT product_status_history_pk
         PRIMARY KEY ("retailerId", "coreProductId", date);
+--[2024-12-06 23:08:18] completed in 2 m 3 s 32 ms
 
 ALTER TABLE staging.product_status_history
     ADD CONSTRAINT product_status_history_productid_uindex
         UNIQUE ("productId");
-
+--[2024-12-06 23:09:48] completed in 1 m 29 s 526 ms
 
 
 --RAISE NOTICE '[%] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL):   DONE',CLOCK_TIMESTAMP();
@@ -390,6 +438,7 @@ after the update
 |Re-listed|false   |  4883591|
 +---------+--------+---------+
 */
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 DROP TABLE IF EXISTS staging.migstatus_ins_products;
 CREATE TABLE staging.migstatus_ins_products AS
 WITH delisted AS (SELECT "retailerId",
@@ -464,6 +513,13 @@ FROM products
          INNER JOIN ins_prod_selection USING (id);
 -- [2024-11-28 21:13:47] 104,440 rows affected in 14 s 760 ms
 --
+
+ALTER TABLE staging.tmp_dup_prod_stat_history
+    RENAME TO tmp_mig2nd_dup_prod_stat_history;
+
+ALTER TABLE staging.tmp_product_status_history
+    RENAME TO tmp_mig2nd_product_status_history;
+
 
 --RAISE NOTICE '[%] T015: CREATE staging.migstatus_ins_products:   DONE',CLOCK_TIMESTAMP();
 
