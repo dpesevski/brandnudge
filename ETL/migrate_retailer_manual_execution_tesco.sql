@@ -235,8 +235,8 @@ WHERE "retailerId" = 1;
  */
 --27,156,189 rows affected in 1 m 25 s 103 ms
 --RAISE NOTICE '[%] T009: DELETE from staging.product_status_history:   DONE',CLOCK_TIMESTAMP();
-/*  TODO: CONTINUE FROM HERE   <<<<    */
 
+CREATE TABLE staging.tmp_product_status_history AS
 WITH retailer_product_load AS (SELECT "retailerId",
                                       "coreProductId",
                                       load_date,
@@ -265,13 +265,13 @@ WITH retailer_product_load AS (SELECT "retailerId",
                          'De-listed'                                AS status
                   FROM retailer_product_load
                   WHERE prev_load_date < load_date - '1 day'::interval)
-INSERT
-INTO staging.product_status_history ("retailerId", "coreProductId", date, "productId", status)
+--INSERT INTO staging.product_status_history ("retailerId", "coreProductId", date, "productId", status)
 SELECT "retailerId", "coreProductId", date, "productId", status
 FROM ins_data;
 -- CREATE TABLE [2024-11-28 20:25:49] 27,124,321 rows affected in 1 m 47 s 404 ms
 -- INSERT INTO  [2024-11-28 20:58:28] 27,124,321 rows affected in 7 m 25 s 702 ms
---
+-- INSERT INTO  [2024-12-06 22:10:43] [57014] ERROR: canceling statement due to user request
+-- CREATE TABLE [2024-12-06 22:24:02] 160,418,596 rows affected in 12 m 30 s 696 ms
 
 --RAISE NOTICE '[%] T010: INSERT INTO staging.product_status_history 1ST PART:   DONE',CLOCK_TIMESTAMP();
 
@@ -283,7 +283,7 @@ WITH last_product_load AS (SELECT "retailerId", "coreProductId", MAX(load_date) 
                             FROM staging.migstatus_products_filtered
                             GROUP BY "retailerId")
 INSERT
-INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+INTO staging.tmp_product_status_history("retailerId", "coreProductId", date, "productId", status)
 SELECT "retailerId",
        "coreProductId",
        (load_date + '1 day'::interval)::date AS date,
@@ -293,19 +293,23 @@ FROM last_product_load
          INNER JOIN last_retailer_load USING ("retailerId")
 WHERE load_date < last_load_date;
 -- [2024-11-28 20:59:50] 41,128 rows affected in 9 s 328 ms
---
+--[2024-12-06 22:25:20] 316,576 rows affected in 53 s 402 ms
+
 
 --RAISE NOTICE '[%] T011: INSERT INTO staging.product_status_history 2ND PART:   DONE',CLOCK_TIMESTAMP();
+CREATE INDEX tmp_product_status_history_productid_uindex
+    ON staging.tmp_product_status_history ("productId");
+--[2024-12-06 22:27:14] completed in 1 m 17 s 121 ms
 
 DROP TABLE IF EXISTS staging."migstatus_productStatuses_additional";
 
 CREATE TABLE staging."migstatus_productStatuses_additional" AS
 SELECT "productStatuses".*
 FROM staging.migration_product_status AS "productStatuses"
-         LEFT OUTER JOIN staging.product_status_history USING ("productId")-- todo: limit only to the retailers currently being migrated?
-WHERE product_status_history."productId" IS NULL;
+         LEFT OUTER JOIN staging.tmp_product_status_history USING ("productId")-- todo: limit only to the retailers currently being migrated?
+WHERE tmp_product_status_history."productId" IS NULL;
 --[2024-11-28 21:06:46] 703,455 rows affected in 33 s 789 ms
---
+--[2024-12-06 22:28:14] 648,159 rows affected in 45 s 830 ms
 
 --RAISE NOTICE '[%] T012: CREATE migstatus_productStatuses_additional:   DONE',CLOCK_TIMESTAMP();
 
@@ -317,6 +321,7 @@ CREATE INDEX migstatus_productStatuses_additional_productid_addindex
     ON staging."migstatus_productStatuses_additional" ("retailerId",
                                                        "coreProductId",
                                                        date);
+
 CREATE INDEX migstatus_productStatuses_additional_productid_statusindex
     ON staging."migstatus_productStatuses_additional" (status);
 --RAISE NOTICE '[%] T013: CREATE migstatus_productStatuses_additional INDEXES:   DONE',CLOCK_TIMESTAMP();
@@ -331,20 +336,44 @@ WITH delisted AS (SELECT "retailerId",
                   FROM staging."migstatus_productStatuses_additional"
                   WHERE status IN ('de-listed', 'De-listed'))
 INSERT
-INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+INTO staging.tmp_product_status_history("retailerId", "coreProductId", date, "productId", status)
 SELECT "retailerId",
        "coreProductId",
        date,
        "productId",
        'De-listed' AS status
 FROM delisted
-WHERE rownum = 1
-ON CONFLICT ("retailerId", "coreProductId", date)
+WHERE rownum = 1;
+/*
+ON CONFLICT ("retailerId", "coreProductId", date) --todo: add constraint
     DO UPDATE
     SET "productId"=excluded."productId"
-WHERE product_status_history."productId" IS NULL;
--- [2024-11-28 21:12:02] 703,224 rows affected in 30 s 11 ms
+WHERE tmp_product_status_history."productId" IS NULL;
+
+ */
+--[2024-11-28 21:12:02] 703,224 rows affected in 30 s 11 ms
+--[2024-12-06 22:28:36] 250,119 rows affected in 2 s 694 ms
+
+ALTER TABLE staging.product_status_history
+    DROP CONSTRAINT product_status_history_pk;
+
+ALTER TABLE staging.product_status_history
+    DROP CONSTRAINT product_status_history_productid_uindex;
+/*  TODO: CONTINUE FROM HERE   <<<<    */
+INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+SELECT "retailerId", "coreProductId", date, "productId", status
+FROM staging.tmp_product_status_history;
 --
+
+ALTER TABLE staging.product_status_history
+    ADD CONSTRAINT product_status_history_pk
+        PRIMARY KEY ("retailerId", "coreProductId", date);
+
+ALTER TABLE staging.product_status_history
+    ADD CONSTRAINT product_status_history_productid_uindex
+        UNIQUE ("productId");
+
+
 
 --RAISE NOTICE '[%] T014: INSERT INTO staging.product_status_history 3RD PART (ADDITIONAL):   DONE',CLOCK_TIMESTAMP();
 
