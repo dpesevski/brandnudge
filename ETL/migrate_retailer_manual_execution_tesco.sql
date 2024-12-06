@@ -438,20 +438,30 @@ after the update
 |Re-listed|false   |  4883591|
 +---------+--------+---------+
 */
+
+
+DROP TABLE IF EXISTS staging.migstatus_delisted;
+CREATE TABLE staging.migstatus_delisted AS
+SELECT "retailerId",
+       "coreProductId",
+       "date" AS delisted_date
+FROM staging.product_status_history -- todo: limit only to the retailers currently being migrated? NOT NEEDED, as already migrated retailers do not have records where productId is null.
+WHERE "productId" IS NULL;
+--[2024-12-06 23:27:34] 2,643,250 rows affected in 7 s 878 ms
+
+ALTER TABLE staging.migstatus_delisted
+    ADD CONSTRAINT migstatus_delisted_pk
+        PRIMARY KEY (delisted_date, "coreProductId", "retailerId");
+
+
 /*  TODO: CONTINUE FROM HERE   <<<<    */
 DROP TABLE IF EXISTS staging.migstatus_ins_products;
 CREATE TABLE staging.migstatus_ins_products AS
-WITH delisted AS (SELECT "retailerId",
-                         "coreProductId",
-                         "date"                                                                  AS delisted_date,
-                         ROW_NUMBER() OVER (PARTITION BY "retailerId", "coreProductId", "date" ) AS rownum
-                  FROM staging.product_status_history -- todo: limit only to the retailers currently being migrated? NOT NEEDED, as already migrated retailers do not have records where productId is null.
-                  WHERE "productId" IS NULL),
-     last_load_product AS (SELECT delisted."retailerId",
+WITH last_load_product AS (SELECT delisted."retailerId",
                                   delisted."coreProductId",
                                   delisted.delisted_date,
                                   MAX(product.load_date) AS load_date
-                           FROM delisted
+                           FROM staging.migstatus_delisted AS delisted
                                     INNER JOIN staging.migstatus_products_filtered AS product
                                                ON (product."retailerId" = delisted."retailerId" AND
                                                    product."coreProductId" = delisted."coreProductId" AND
@@ -513,12 +523,6 @@ FROM products
          INNER JOIN ins_prod_selection USING (id);
 -- [2024-11-28 21:13:47] 104,440 rows affected in 14 s 760 ms
 --
-
-ALTER TABLE staging.tmp_dup_prod_stat_history
-    RENAME TO tmp_mig2nd_dup_prod_stat_history;
-
-ALTER TABLE staging.tmp_product_status_history
-    RENAME TO tmp_mig2nd_product_status_history;
 
 
 --RAISE NOTICE '[%] T015: CREATE staging.migstatus_ins_products:   DONE',CLOCK_TIMESTAMP();
