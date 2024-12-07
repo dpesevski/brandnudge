@@ -688,8 +688,8 @@ SET migration_end=CLOCK_TIMESTAMP();
 WHERE "retailerId" = 1;
 */
 
-/*  due to delete in productStatuses    */
-VACUUM FULL "productStatuses";
+
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 
 /*  completed */
 CREATE TABLE migration.ms2_mig_prod_stat_multiple_in_same_day AS
@@ -700,6 +700,8 @@ WITH missing_product_statuses AS (SELECT data_corr_ret_mig_prod_status_bck.*
 SELECT *
 FROM missing_product_statuses;
 --[2024-12-07 02:07:51] 158,491,127 rows affected in 8 m 27 s 46 ms
+--[2024-12-07 03:39:02] 398,969 rows affected in 1 m 17 s 311 ms
+
 
 --[2024-11-29 21:21:58] completed in 10 m 22 s 469 ms
 
@@ -758,12 +760,8 @@ ALTER TABLE staging.migstatus_products_filtered  RENAME TO ms2_migstatus_product
 ALTER TABLE staging.ms2_migstatus_products_filtered  set SCHEMA migration;
 
 
-ALTER TABLE staging.migstatus_productStatuses_additional  RENAME TO ms2_migstatus_productStatuses_additional;
-ALTER TABLE staging.ms2_migstatus_productStatuses_additional  set SCHEMA migration;
-
-
-ALTER TABLE staging.migstatus_productStatuses_additional  RENAME TO ms2_migstatus_productStatuses_additional;
-ALTER TABLE staging.ms2_migstatus_productStatuses_additional  set SCHEMA migration;
+ALTER TABLE staging."migstatus_productStatuses_additional"  RENAME TO "ms2_migstatus_productStatuses_additional";
+ALTER TABLE staging."ms2_migstatus_productStatuses_additional"  set SCHEMA migration;
 
 
 ALTER TABLE staging.tmp_mig2nd_dup_prod_stat_history  RENAME TO ms2_tmp_mig2nd_dup_prod_stat_history;
@@ -776,3 +774,7 @@ ALTER TABLE staging.ms2_tmp_mig2nd_fix_dup_status  set SCHEMA migration;
 
 ALTER TABLE staging.tmp_mig2nd_product_status_history  RENAME TO ms2_tmp_mig2nd_product_status_history;
 ALTER TABLE staging.ms2_tmp_mig2nd_product_status_history  set SCHEMA migration;
+
+
+
+
