@@ -535,13 +535,13 @@ FROM products
 
 
 --RAISE NOTICE '[%] T015: CREATE staging.migstatus_ins_products:   DONE',CLOCK_TIMESTAMP();
-/*  TODO: CONTINUE FROM HERE   <<<<    */
+
 INSERT
 INTO products
 SELECT*
 FROM staging.migstatus_ins_products;
 --3,310,580 rows affected in 31 m 23 s 196 ms
---
+--[2024-12-07 00:38:58] 2,643,250 rows affected in 44 m 1 s 899 ms
 
 --RAISE NOTICE '[%] T016: INSERT INTO PRODUCTS:   DONE',CLOCK_TIMESTAMP();
 
@@ -553,14 +553,11 @@ WHERE history."retailerId" = ins_products."retailerId"
   AND history."coreProductId" = ins_products."coreProductId"
   AND history.date = ins_products.date;
 -- 2,752,620 rows affected in 9 m 4 s 600 ms
---
+--[2024-12-07 00:44:51] 2,643,250 rows affected in 5 m 51 s 955 ms
 
 --RAISE NOTICE '[%] T017: UPDATED staging.product_status_history:   DONE',CLOCK_TIMESTAMP();
 
-CREATE TABLE IF NOT EXISTS staging.data_corr_ret_mig_prod_status_bck AS TABLE public."productStatuses"
-    WITH NO DATA;
-
-
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 WITH deleted AS (
     DELETE FROM "productStatuses"
         USING staging.migration_product_status WHERE
