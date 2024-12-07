@@ -477,9 +477,9 @@ FROM staging.migstatus_products_filtered
                     USING ("retailerId", "coreProductId", load_date)
          LEFT OUTER JOIN dates ON (dates."date" = delisted_date);
 --[2024-12-06 23:48:38] 2,643,250 rows affected in 11 s 285 ms
-alter table staging.migstatus_ins_prod_selection
-    add constraint migstatus_ins_prod_selection_pk
-        primary key (id);
+ALTER TABLE staging.migstatus_ins_prod_selection
+    ADD CONSTRAINT migstatus_ins_prod_selection_pk
+        PRIMARY KEY (id);
 
 
 DROP TABLE IF EXISTS staging.migstatus_ins_products;
@@ -569,10 +569,23 @@ INTO staging.data_corr_ret_mig_prod_status_bck
 SELECT *
 FROM deleted;
 --[2024-11-29 20:22:06] 27,144,256 rows affected in 6 m 40 s 703 ms
---
+--[2024-12-07 01:46:18] 158,491,127 rows affected in 1 h 1 m 26 s 225 ms
 
 --RAISE NOTICE '[%] T018: DELETE FROM "productStatuses":   DONE',CLOCK_TIMESTAMP();
 
+
+ALTER TABLE staging.data_corr_ret_mig_prod_status_bck
+    ADD CONSTRAINT data_corr_ret_mig_prod_status_bck_pk
+        PRIMARY KEY ("productId");
+--[2024-12-07 01:49:26] completed in 1 m 25 s 516 ms
+
+SET work_mem = '4GB';
+SET max_parallel_workers_per_gather = 4;
+SHOW WORK_MEM;
+SHOW max_parallel_workers_per_gather;
+
+
+DROP TABLE staging.migret_ins_productstatuses1;
 CREATE TABLE staging.migret_ins_productstatuses1 AS
 SELECT "productStatuses".id,
        "productId",
@@ -584,13 +597,32 @@ SELECT "productStatuses".id,
 FROM staging.product_status_history
          INNER JOIN staging.data_corr_ret_mig_prod_status_bck AS "productStatuses" USING ("productId");
 --[2024-11-29 20:29:59] 27,115,721 rows affected in 1 m 51 s 349 ms
---
+--[2024-12-07 02:23:44] 158,092,158 rows affected in 32 m 15 s 509 ms
 
+/*  completed */
+CREATE TABLE staging.migret_ins_productstatuses2 AS
+SELECT "productId",
+       product_status_history.status
+FROM staging.product_status_history
+         LEFT OUTER JOIN staging.data_corr_ret_mig_prod_status_bck AS "productStatuses" USING ("productId")
+WHERE product_status_history."retailerId" != 1 --tesco
+  AND "productStatuses".id IS NULL;
+--[2024-11-29 20:46:51] 54,197 rows affected in 55 s 304 ms
+--[2024-12-07 01:57:03] 2,643,250 rows affected in 1 m 7 s 251 ms
+
+
+
+SET work_mem = '4GB';
+SET max_parallel_workers_per_gather = 4;
+SHOW WORK_MEM;
+SHOW max_parallel_workers_per_gather;
 /*  disable constraints on "productStatuses" */
 ALTER TABLE public."productStatuses"
     DROP CONSTRAINT "productStatuses_pkey",
     DROP CONSTRAINT productstatuses_products_id_fk;
-DROP INDEX "productStatuses_productId_uq";
+
+ALTER TABLE "productStatuses"
+    DROP CONSTRAINT "productStatuses_productId_uq";
 
 
 
@@ -610,16 +642,8 @@ SELECT id,
        load_id
 FROM staging.migret_ins_productstatuses1;
 --[2024-11-29 20:45:38] 27,115,721 rows affected in 1 m 48 s 751 ms
---
+--[2024-12-07 03:21:18] 158,092,158 rows affected in 48 m 17 s 62 ms
 
-CREATE TABLE staging.migret_ins_productstatuses2 AS
-SELECT "productId",
-       product_status_history.status
-FROM staging.product_status_history
-         LEFT OUTER JOIN staging.data_corr_ret_mig_prod_status_bck AS "productStatuses" USING ("productId")
-WHERE "productStatuses".id IS NULL;
---[2024-11-29 20:46:51] 54,197 rows affected in 55 s 304 ms
---
 
 INSERT INTO "productStatuses"("productId",
                               status,
@@ -635,31 +659,27 @@ SELECT "productId",
        NULL              AS load_id
 FROM staging.migret_ins_productstatuses2;
 --[2024-11-29 20:47:05] 54,197 rows affected in 335 ms
---
+--[2024-12-07 03:24:10] 2,643,250 rows affected in 39 s 354 ms
+
 
 /*  re-create constraints on "productStatuses" */
 ALTER TABLE public."productStatuses"
     ADD CONSTRAINT "productStatuses_pkey" PRIMARY KEY (id);
 --[2024-11-29 20:56:03] completed in 2 m 23 s 344 ms
+--[2024-12-07 03:26:34] completed in 2 m 23 s 676 ms
 
 --CREATE UNIQUE INDEX productstatuses_productid_uindex ON public."productStatuses" ("productId");
 ALTER TABLE public."productStatuses"
     ADD CONSTRAINT "productStatuses_productId_uq" UNIQUE ("productId");
 --[2024-11-29 21:08:56] completed in 2 m 27 s 622 ms
-
+--[2024-12-07 03:28:57] completed in 2 m 22 s 476 ms
+/*  TODO: CONTINUE FROM HERE   <<<<    */
 ALTER TABLE public."productStatuses"
     ADD CONSTRAINT productstatuses_products_id_fk
         FOREIGN KEY ("productId") REFERENCES public.products;
 --[2024-11-29 21:05:35] completed in 9 m 31 s 48 ms
-
-CREATE TABLE migration.mig_prod_stat_multiple_in_same_day_2nd AS
-WITH missing_product_statuses AS (SELECT data_corr_ret_mig_prod_status_bck.*
-                                  FROM staging.data_corr_ret_mig_prod_status_bck
-                                           LEFT OUTER JOIN "productStatuses" USING ("productId")
-                                  WHERE "productStatuses"."productId" IS NULL)
-SELECT *
-FROM missing_product_statuses;
 --
+
 
 /*
 not relevant, as it only updates retailers from current migration
@@ -670,6 +690,89 @@ WHERE "retailerId" = 1;
 
 /*  due to delete in productStatuses    */
 VACUUM FULL "productStatuses";
+
+/*  completed */
+CREATE TABLE migration.ms2_mig_prod_stat_multiple_in_same_day AS
+WITH missing_product_statuses AS (SELECT data_corr_ret_mig_prod_status_bck.*
+                                  FROM staging.data_corr_ret_mig_prod_status_bck
+                                           LEFT OUTER JOIN "productStatuses" USING ("productId")
+                                  WHERE "productStatuses"."productId" IS NULL)
+SELECT *
+FROM missing_product_statuses;
+--[2024-12-07 02:07:51] 158,491,127 rows affected in 8 m 27 s 46 ms
+
 --[2024-11-29 21:21:58] completed in 10 m 22 s 469 ms
 
-VACUUM FULL "products";
+--VACUUM FULL "products";
+
+
+ALTER TABLE staging.data_corr_ret_mig_prod_status_bck  RENAME TO ms2_data_corr_ret_mig_prod_status_bck;
+ALTER TABLE staging.ms2_data_corr_ret_mig_prod_status_bck  set SCHEMA data_corr;
+
+ALTER TABLE staging.data_corr_status_deleted_aggregatedproducts  RENAME TO ms2_data_corr_status_deleted_aggregatedproducts;
+ALTER TABLE staging.ms2_data_corr_status_deleted_aggregatedproducts  set SCHEMA data_corr;
+
+ALTER TABLE staging.data_corr_status_deleted_products  RENAME TO ms2_data_corr_status_deleted_products;
+ALTER TABLE staging.ms2_data_corr_status_deleted_products  set SCHEMA data_corr;
+
+ALTER TABLE staging.data_corr_status_deleted_productsdata  RENAME TO ms2_data_corr_status_deleted_productsdata;
+ALTER TABLE staging.ms2_data_corr_status_deleted_productsdata  set SCHEMA data_corr;
+
+ALTER TABLE staging.data_corr_status_deleted_promotions  RENAME TO ms2_data_corr_status_deleted_promotions;
+ALTER TABLE staging.ms2_data_corr_status_deleted_promotions  set SCHEMA data_corr;
+
+ALTER TABLE staging.migration_migrated_retailers  RENAME TO ms2_migration_migrated_retailers;
+ALTER TABLE staging.ms2_migration_migrated_retailers  set SCHEMA migration;
+
+
+ALTER TABLE staging.migration_product_status  RENAME TO ms2_migration_product_status;
+ALTER TABLE staging.ms2_migration_product_status  set SCHEMA migration;
+
+
+ALTER TABLE staging.migret_ins_productstatuses1  RENAME TO ms2_migret_ins_productstatuses1;
+ALTER TABLE staging.ms2_migret_ins_productstatuses1  set SCHEMA migration;
+
+
+ALTER TABLE staging.migret_ins_productstatuses2  RENAME TO ms2_migret_ins_productstatuses2;
+ALTER TABLE staging.ms2_migret_ins_productstatuses2  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_delisted  RENAME TO ms2_migstatus_delisted;
+ALTER TABLE staging.ms2_migstatus_delisted  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_ins_prod_selection  RENAME TO ms2_migstatus_ins_prod_selection;
+ALTER TABLE staging.ms2_migstatus_ins_prod_selection  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_ins_products  RENAME TO ms2_migstatus_ins_products;
+ALTER TABLE staging.ms2_migstatus_ins_products  set SCHEMA migration;
+
+
+
+ALTER TABLE staging.migstatus_last_load_product  RENAME TO ms2_migstatus_last_load_product;
+ALTER TABLE staging.ms2_migstatus_last_load_product  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_products_filtered  RENAME TO ms2_migstatus_products_filtered;
+ALTER TABLE staging.ms2_migstatus_products_filtered  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_productStatuses_additional  RENAME TO ms2_migstatus_productStatuses_additional;
+ALTER TABLE staging.ms2_migstatus_productStatuses_additional  set SCHEMA migration;
+
+
+ALTER TABLE staging.migstatus_productStatuses_additional  RENAME TO ms2_migstatus_productStatuses_additional;
+ALTER TABLE staging.ms2_migstatus_productStatuses_additional  set SCHEMA migration;
+
+
+ALTER TABLE staging.tmp_mig2nd_dup_prod_stat_history  RENAME TO ms2_tmp_mig2nd_dup_prod_stat_history;
+ALTER TABLE staging.ms2_tmp_mig2nd_dup_prod_stat_history  set SCHEMA migration;
+
+
+ALTER TABLE staging.tmp_mig2nd_fix_dup_status  RENAME TO ms2_tmp_mig2nd_fix_dup_status;
+ALTER TABLE staging.ms2_tmp_mig2nd_fix_dup_status  set SCHEMA migration;
+
+
+ALTER TABLE staging.tmp_mig2nd_product_status_history  RENAME TO ms2_tmp_mig2nd_product_status_history;
+ALTER TABLE staging.ms2_tmp_mig2nd_product_status_history  set SCHEMA migration;
