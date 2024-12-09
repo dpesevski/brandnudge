@@ -157,13 +157,14 @@ SELECT id             AS load_id,
        "retailerId",
        "sourceType"   AS retailer_name,
        product_count,
-       flag,
+--       flag,
 --
        run_at,
        execution_time AS "execution time (in seconds)",
        dd_date
 FROM staging.load
          LEFT OUTER JOIN prod_cnt USING (id)
+WHERE id >= 364
 ORDER BY id DESC;
 
 WITH debug_errors AS (SELECT debug_errors.id AS error_id,
