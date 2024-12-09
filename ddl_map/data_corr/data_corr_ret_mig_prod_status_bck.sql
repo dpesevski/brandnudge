@@ -12,3 +12,7 @@ CREATE TABLE data_corr.data_corr_ret_mig_prod_status_bck
 ALTER TABLE data_corr.data_corr_ret_mig_prod_status_bck
     OWNER TO postgres;
 
+GRANT SELECT ON data_corr.data_corr_ret_mig_prod_status_bck TO bn_ro;
+
+GRANT SELECT ON data_corr.data_corr_ret_mig_prod_status_bck TO dejan_user;
+
