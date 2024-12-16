@@ -205,6 +205,11 @@ DROP SCHEMA IF EXISTS prod_fdw CASCADE;
 CREATE SCHEMA prod_fdw;
 IMPORT FOREIGN SCHEMA public FROM SERVER proddb_fdw INTO prod_fdw;
 
+DROP SCHEMA IF EXISTS proddb_staging_fdw CASCADE;
+CREATE SCHEMA proddb_staging_fdw;
+IMPORT FOREIGN SCHEMA staging FROM SERVER proddb_fdw INTO proddb_staging_fdw;
+
+
 CREATE SCHEMA IF NOT EXISTS test;
 
 DROP TABLE IF EXISTS test.retailer;

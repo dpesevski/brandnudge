@@ -93,7 +93,7 @@ WITH stats AS (SELECT "retailerId",
                       (MAX(products."createdAt") - MIN(products."createdAt")) AS load_time
                FROM products
                         INNER JOIN dates ON (dates.id = products."dateId")
-               WHERE DATES.date >= '2024-12-06' --'2024-11-28'
+               WHERE DATES.date >= '2024-12-10' --'2024-11-28'
 --WHERE "dateId" = 30013
                GROUP BY 1, 2)
 SELECT "retailerId",
@@ -161,10 +161,10 @@ SELECT id             AS load_id,
 --
        run_at,
        execution_time AS "execution time (in seconds)",
-       dd_date
+       dd_date,
+       load_status
 FROM staging.load
          LEFT OUTER JOIN prod_cnt USING (id)
-WHERE id >= 364
 ORDER BY id DESC;
 
 WITH debug_errors AS (SELECT debug_errors.id AS error_id,
@@ -205,7 +205,8 @@ SELECT id,
        created_at,
        ROUND(LENGTH(fetched_data::text) / 1024 / 1024 ::numeric, 2) AS "Payload size (in MB)",
        JSON_ARRAY_LENGTH(fetched_data #> '{products}')              AS product_count,
-       fetched_data #> '{retailer, name}'                           AS retailer,
+       fetched_data #> '{retailer, name}'                           AS retailer_name,
+       fetched_data #> '{retailer}'                                 AS retailer,
        fetched_data #> '{products,0, date}'                         AS load_date,
        flag
 FROM staging.debug_errors;
@@ -258,9 +259,9 @@ SET work_mem = '4GB';
 SET max_parallel_workers_per_gather = 4;
 SHOW WORK_MEM;
 
-SELECT staging.load_retailer_data(fetched_data, flag)
+SELECT *--staging.load_retailer_data(fetched_data, flag)
 FROM staging.debug_errors
-WHERE id = 201;
+WHERE id = 100;
 /*
 223
 [2024-11-20 21:43:00] 1 row retrieved starting from 1 in 2 m 59 s 809 ms (execution: 2 m 59 s 513 ms, fetching: 296 ms)
@@ -331,3 +332,24 @@ WHERE id = 216;
 SELECT COUNT(*)
 FROM promotions
 WHERE load_id = 225
+
+
+WITH prod_cnt AS (SELECT load_id AS id, "retailerId", "sourceType", COUNT(*) AS product_count
+                  FROM staging.debug_products
+                  GROUP BY load_id, "retailerId", "sourceType")
+SELECT "retailerId",
+       COUNT(*),
+       SUM(product_count)                     AS total_product_count,
+       MIN(product_count)                     AS min_product_count,
+       MAX(product_count)                     AS max_product_count,
+       ROUND(AVG(product_count))              AS avg_product_count,
+       --MIN(run_at),
+       ---MAX(run_at),
+       ROUND(MIN(execution_time) * 100) / 100 AS min_execution_time,
+       ROUND(MAX(execution_time) * 100) / 100 AS max_execution_time,
+       ROUND(AVG(execution_time) * 100) / 100 AS avg_execution_time,
+       ROUND(SUM(execution_time) * 100) / 100 AS total_execution_time
+FROM staging.load
+         LEFT OUTER JOIN prod_cnt USING (id)
+GROUP BY 1
+ORDER BY 1 DESC

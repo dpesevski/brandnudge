@@ -102,12 +102,19 @@ WHERE "coreProductId" = 1006430;
 
 SELECT *
 FROM "coreRetailerTaxonomies"
-WHERE "coreRetailerId" IN (677740, 703491);
+WHERE "coreRetailerId"  =677740; --IN (677740, 703491);
 
 SELECT *
 FROM "bannersProducts"
-WHERE "coreRetailerId" IN (677740, 703491);
+WHERE "coreRetailerId" =677740; --IN (677740, 703491);
 
+SELECT *
+FROM reviews
+WHERE "coreRetailerId" =677740; --IN (677740, 703491);
+
+SELECT *
+FROM "productGroupCoreProducts"
+WHERE "coreProductId" = 1006430;
 
 
 SELECT "retailerId", "coreProductId", ean, "sourceId", COUNT(*)

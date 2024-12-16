@@ -773,9 +773,10 @@ CREATE OR REPLACE FUNCTION staging.load_retailer_data_pp(value json, load_id int
 AS
 $$
 DECLARE
-    dd_date     date;
-    dd_date_id  integer;
-    dd_retailer retailers;
+    dd_date        date;
+    dd_date_id     integer;
+    dd_retailer    retailers;
+    dd_load_status text = 'completed';
 BEGIN
 
     dd_date := value #> '{products,0,date}';
@@ -814,13 +815,15 @@ BEGIN
                              flag,
                              dd_date,
                              dd_retailer,
-                             dd_date_id)
+                             dd_date_id,
+                             load_status)
     SELECT load_retailer_data_pp.load_id,
            value,
            'create-products-pp' AS flag,
            dd_date,
            dd_retailer,
-           dd_date_id;
+           dd_date_id,
+           dd_load_status       AS load_status;
 
     DROP TABLE IF EXISTS tmp_product_pp_dd_products;
     CREATE TEMPORARY TABLE tmp_product_pp_dd_products ON COMMIT DROP AS
@@ -1480,6 +1483,162 @@ BEGIN
            'De-listed'                   AS status
     FROM delisted_product;
 
+    WITH tmp_product_src_part AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY "sourceId" ) AS rownum
+                                  FROM tmp_product_pp),
+         deleted AS (
+             DELETE
+                 FROM tmp_product_pp USING tmp_product_src_part
+                     WHERE tmp_product_pp."coreProductId" = tmp_product_src_part."coreProductId"
+                         AND tmp_product_src_part.rownum > 1
+                     RETURNING tmp_product_pp.*),
+         ins_removed AS (
+             INSERT
+                 INTO staging.debug_tmp_product_pp_removed (load_id,
+                                                            id,
+                                                            "sourceType",
+                                                            ean,
+                                                            "promotionDescription",
+                                                            features,
+                                                            DATE,
+                                                            "sourceId",
+                                                            "productBrand",
+                                                            "productTitle",
+                                                            "productImage",
+                                                            "newCoreImage",
+                                                            "secondaryImages",
+                                                            "productDescription",
+                                                            "productInfo",
+                                                            "promotedPrice",
+                                                            "productInStock",
+                                                            "productInListing",
+                                                            "reviewsCount",
+                                                            "reviewsStars",
+                                                            "eposId",
+                                                            multibuy,
+                                                            "coreProductId",
+                                                            "retailerId",
+                                                            "createdAt",
+                                                            "updatedAt",
+                                                            "imageId",
+                                                            size,
+                                                            "pricePerWeight",
+                                                            href,
+                                                            nutritional,
+                                                            "basePrice",
+                                                            "shelfPrice",
+                                                            "productTitleDetail",
+                                                            "sizeUnit",
+                                                            "dateId",
+                                                            "countryCode",
+                                                            currency,
+                                                            "cardPrice",
+                                                            "onPromo",
+                                                            bundled,
+                                                            "originalPrice",
+                                                            "productPrice",
+                                                            status,
+                                                            "productOptions",
+                                                            shop,
+                                                            "amazonShop",
+                                                            choice,
+                                                            "amazonChoice",
+                                                            "lowStock",
+                                                            "sellParty",
+                                                            "amazonSellParty",
+                                                            sell,
+                                                            "fulfilParty",
+                                                            "amazonFulfilParty",
+                                                            "amazonSell",
+                                                            marketplace,
+                                                            "marketplaceData",
+                                                            "priceMatchDescription",
+                                                            "priceMatch",
+                                                            "priceLock",
+                                                            "isNpd",
+                                                            "eanIssues",
+                                                            screenshot,
+                                                            "brandId",
+                                                            "EANs",
+                                                            promotions)
+                     SELECT load_retailer_data_pp.load_id,
+                            id,
+                            "sourceType",
+                            ean,
+                            "promotionDescription",
+                            features,
+                            DATE,
+                            "sourceId",
+                            "productBrand",
+                            "productTitle",
+                            "productImage",
+                            "newCoreImage",
+                            "secondaryImages",
+                            "productDescription",
+                            "productInfo",
+                            "promotedPrice",
+                            "productInStock",
+                            "productInListing",
+                            "reviewsCount",
+                            "reviewsStars",
+                            "eposId",
+                            multibuy,
+                            "coreProductId",
+                            "retailerId",
+                            "createdAt",
+                            "updatedAt",
+                            "imageId",
+                            size,
+                            "pricePerWeight",
+                            href,
+                            nutritional,
+                            "basePrice",
+                            "shelfPrice",
+                            "productTitleDetail",
+                            "sizeUnit",
+                            "dateId",
+                            "countryCode",
+                            currency,
+                            "cardPrice",
+                            "onPromo",
+                            bundled,
+                            "originalPrice",
+                            "productPrice",
+                            status,
+                            "productOptions",
+                            shop,
+                            "amazonShop",
+                            choice,
+                            "amazonChoice",
+                            "lowStock",
+                            "sellParty",
+                            "amazonSellParty",
+                            sell,
+                            "fulfilParty",
+                            "amazonFulfilParty",
+                            "amazonSell",
+                            marketplace,
+                            "marketplaceData",
+                            "priceMatchDescription",
+                            "priceMatch",
+                            "priceLock",
+                            "isNpd",
+                            "eanIssues",
+                            screenshot,
+                            "brandId",
+                            "EANs",
+                            promotions
+                     FROM deleted
+                     RETURNING debug_tmp_product_pp_removed.*)
+    SELECT CASE WHEN COUNT(*) != 0 THEN 'partially loaded. removed ' || COUNT(*) || ' product records.' END
+    INTO dd_load_status
+    FROM ins_removed;
+
+    IF dd_load_status != 'completed' THEN
+        UPDATE staging.load
+        SET load_status=dd_load_status
+        WHERE id = load_retailer_data_pp.load_id;
+    END IF;
+
     /*  createProductBy    */
     WITH ins_products AS (
         INSERT INTO products ("sourceType",
@@ -1487,7 +1646,7 @@ BEGIN
                               promotions,
                               "promotionDescription",
                               features,
-                              date,
+                              DATE,
                               "sourceId",
                               "productBrand",
                               "productTitle",
@@ -1526,7 +1685,7 @@ BEGIN
                    COALESCE(ARRAY_LENGTH(promotions, 1) > 0, FALSE) AS promotions,
                    "promotionDescription",
                    features,
-                   date,
+                   DATE,
                    "sourceId",
                    "productBrand",
                    "productTitle",
@@ -1607,12 +1766,12 @@ BEGIN
       AND tmp_product_pp."dateId" = ins_products."dateId";
 
 
-    INSERT INTO staging.product_status_history("retailerId", "coreProductId", date, "productId", status)
+    INSERT INTO staging.product_status_history("retailerId", "coreProductId", DATE, "productId", status)
     --SELECT "retailerId", "coreProductId", date, id AS "productId", status
-    SELECT "retailerId", "coreProductId", date, MAX(id) AS "productId", status
+    SELECT "retailerId", "coreProductId", DATE, MAX(id) AS "productId", status
     FROM tmp_product_pp
-    GROUP BY "retailerId", "coreProductId", date, status
-    ON CONFLICT ("retailerId", "coreProductId", date)
+    GROUP BY "retailerId", "coreProductId", DATE, status
+    ON CONFLICT ("retailerId", "coreProductId", DATE)
         DO UPDATE
         SET status=excluded.status;
 
@@ -1622,7 +1781,7 @@ BEGIN
                                               ean,
                                               "promotionDescription",
                                               features,
-                                              date,
+                                              DATE,
                                               "sourceId",
                                               "productBrand",
                                               "productTitle",
@@ -1689,7 +1848,7 @@ BEGIN
            ean,
            "promotionDescription",
            features,
-           date,
+           DATE,
            "sourceId",
            "productBrand",
            "productTitle",
@@ -1939,5 +2098,5 @@ BEGIN
     FROM debug_coreRetailerDates;
 
     RETURN;
-END ;
+END;
 $$;
