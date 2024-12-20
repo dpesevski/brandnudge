@@ -294,7 +294,7 @@ load id for error 100 = 216
 
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
-WHERE id = 3440;--226
+WHERE id = 3502;--226
 
 DELETE
 FROM staging.debug_errors
