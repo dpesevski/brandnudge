@@ -160,7 +160,7 @@ SELECT id             AS load_id,
 --       flag,
 --
        run_at,
-       execution_time AS "execution time (in seconds)",
+       execution_time AS "execution time (in secoDnds)",
        dd_date,
        load_status
 FROM staging.load
@@ -291,9 +291,10 @@ load id for error 100 = 216
 --133,134, tesco: 100, 201
 -- '209','210' FROM staging.load TO BE RELOADED JUST IN CASE!!
 
+
 SELECT staging.load_retailer_data(data, flag)
 FROM staging.load
-WHERE id = 215;--226
+WHERE id = 3440;--226
 
 DELETE
 FROM staging.debug_errors

@@ -29,5 +29,12 @@
       <jdbc-url>jdbc:postgresql://brandnudge-db-cluster-prod.cluster-cgtow2b7iejj.eu-north-1.rds.amazonaws.com:5432/brandnudge</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="postgres@localhost" uuid="d3438c74-a370-4f80-b1c7-8a124430f5b7">
+      <driver-ref>postgresql</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
+      <jdbc-url>jdbc:postgresql://localhost:5434/postgres</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
