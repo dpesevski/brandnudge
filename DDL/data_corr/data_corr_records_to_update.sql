@@ -1,0 +1,17 @@
+CREATE TABLE DATA_CORR.DATA_CORR_RECORDS_TO_UPDATE
+(
+    "retailerId"         integer,
+    "coreProductId"      integer,
+    "coreRetailerId"     integer,
+    "new_coreRetailerId" integer,
+    CONSTRAINT RECORDS_TO_UPDATE_UQ
+        UNIQUE ("retailerId", "coreRetailerId")
+);
+
+ALTER TABLE DATA_CORR.DATA_CORR_RECORDS_TO_UPDATE
+    OWNER TO POSTGRES;
+
+GRANT SELECT ON DATA_CORR.DATA_CORR_RECORDS_TO_UPDATE TO BN_RO;
+
+GRANT SELECT ON DATA_CORR.DATA_CORR_RECORDS_TO_UPDATE TO DEJAN_USER;
+

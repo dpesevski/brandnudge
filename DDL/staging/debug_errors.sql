@@ -1,0 +1,21 @@
+CREATE TABLE STAGING.DEBUG_ERRORS
+(
+    ID           serial,
+    LOAD_ID      integer,
+    SQL_STATE    text,
+    MESSAGE      text,
+    DETAIL       text,
+    HINT         text,
+    CONTEXT      text,
+    FETCHED_DATA JSON,
+    FLAG         text,
+    CREATED_AT   timestamp DEFAULT NOW()
+);
+
+ALTER TABLE STAGING.DEBUG_ERRORS
+    OWNER TO POSTGRES;
+
+GRANT SELECT ON STAGING.DEBUG_ERRORS TO BN_RO;
+
+GRANT SELECT ON STAGING.DEBUG_ERRORS TO DEJAN_USER;
+

@@ -1,0 +1,2 @@
+GRANT SELECT ON SEQUENCE "ingestStatuses_id_seq" TO DEJAN_USER;
+

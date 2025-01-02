@@ -1,0 +1,12 @@
+CREATE FUNCTION POSTGRES_FDW_HANDLER() RETURNS fdw_handler
+    STRICT
+    LANGUAGE C
+AS
+$$
+begin
+-- missing source code
+end;
+$$;
+
+ALTER FUNCTION POSTGRES_FDW_HANDLER() OWNER TO RDS_SUPERUSER;
+

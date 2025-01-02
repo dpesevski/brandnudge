@@ -1,0 +1,16 @@
+CREATE FUNCTION FN_TO_DATE(value text) RETURNS date
+    LANGUAGE PLPGSQL
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::date;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+ALTER FUNCTION FN_TO_DATE(text) OWNER TO POSTGRES;
+

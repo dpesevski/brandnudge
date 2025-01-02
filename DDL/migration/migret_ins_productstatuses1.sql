@@ -1,0 +1,18 @@
+CREATE TABLE MIGRATION.MIGRET_INS_PRODUCTSTATUSES1
+(
+    ID          integer,
+    "productId" integer,
+    STATUS      text,
+    SCREENSHOT  varchar(255),
+    "createdAt" timestamp with time zone,
+    "updatedAt" timestamp with time zone,
+    LOAD_ID     integer
+);
+
+ALTER TABLE MIGRATION.MIGRET_INS_PRODUCTSTATUSES1
+    OWNER TO POSTGRES;
+
+GRANT SELECT ON MIGRATION.MIGRET_INS_PRODUCTSTATUSES1 TO BN_RO;
+
+GRANT SELECT ON MIGRATION.MIGRET_INS_PRODUCTSTATUSES1 TO DEJAN_USER;
+

@@ -1,0 +1,4 @@
+CREATE TYPE ENUM_USERS_STATUS AS enum ('active', 'blocked', 'inactive');
+
+ALTER TYPE ENUM_USERS_STATUS OWNER TO POSTGRES;
+

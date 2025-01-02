@@ -1,0 +1,23 @@
+CREATE TABLE ROLES
+(
+    ID           serial
+        PRIMARY KEY,
+    ROLE_NAME    varchar(255)             NOT NULL
+        CONSTRAINT UNIQUE_ROLE_NAME
+            UNIQUE,
+    ACCESS_PAGES JSONB DEFAULT '[]'::JSONB,
+    "createdAt"  timestamp with time zone NOT NULL,
+    "updatedAt"  timestamp with time zone NOT NULL
+);
+
+ALTER TABLE ROLES
+    OWNER TO POSTGRES;
+
+GRANT SELECT ON ROLES TO BN_RO;
+
+GRANT SELECT ON ROLES TO BN_RO_ROLE;
+
+GRANT SELECT ON ROLES TO BN_RO_USER1;
+
+GRANT SELECT ON ROLES TO DEJAN_USER;
+

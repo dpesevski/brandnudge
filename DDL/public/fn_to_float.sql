@@ -1,0 +1,16 @@
+CREATE FUNCTION FN_TO_FLOAT(value text) RETURNS double precision
+    LANGUAGE PLPGSQL
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::float;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+ALTER FUNCTION FN_TO_FLOAT(text) OWNER TO POSTGRES;
+

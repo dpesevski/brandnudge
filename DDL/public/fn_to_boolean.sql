@@ -1,0 +1,16 @@
+CREATE FUNCTION FN_TO_BOOLEAN(value text) RETURNS boolean
+    LANGUAGE PLPGSQL
+AS
+$$
+BEGIN
+    BEGIN
+        RETURN value::boolean;
+    EXCEPTION
+        WHEN OTHERS THEN
+            RETURN NULL;
+    END;
+END;
+$$;
+
+ALTER FUNCTION FN_TO_BOOLEAN(text) OWNER TO POSTGRES;
+
