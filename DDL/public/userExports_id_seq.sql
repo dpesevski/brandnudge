@@ -1,2 +1,0 @@
-GRANT SELECT ON SEQUENCE "userExports_id_seq" TO DEJAN_USER;
-

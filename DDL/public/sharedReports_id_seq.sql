@@ -1,2 +1,0 @@
-GRANT SELECT ON SEQUENCE "sharedReports_id_seq" TO DEJAN_USER;
-

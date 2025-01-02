@@ -1,2 +1,0 @@
-GRANT SELECT ON SEQUENCE "scraperErrors_id_seq" TO DEJAN_USER;
-

@@ -1,8 +1,0 @@
-CREATE SEQUENCE "pdsData_id_seq";
-
-ALTER SEQUENCE "pdsData_id_seq" OWNER TO POSTGRES;
-
-ALTER SEQUENCE "pdsData_id_seq" OWNED BY "pdsData".ID;
-
-GRANT SELECT ON SEQUENCE "pdsData_id_seq" TO DEJAN_USER;
-
