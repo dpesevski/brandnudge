@@ -8,7 +8,7 @@ DECLARE
     dd_retailer    retailers;
     dd_load_status text = 'completed';
 BEGIN
--- to do
+
     dd_date := value #> '{products,0,date}';
 
     IF JSON_TYPEOF(value #> '{retailer}') != 'object' THEN
