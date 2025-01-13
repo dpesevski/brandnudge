@@ -61,7 +61,7 @@ ALTER TABLE "coreProductBarcodes"
         SET NOT NULL;
 
 ALTER TABLE "coreProductBarcodes"
-    ADD CONSTRAINT coreProductBarcodes_coreProducts__fk
+    ADD CONSTRAINT coreProductBarcodes_coreProducts_fk
         FOREIGN KEY ("coreProductId") REFERENCES "coreProducts" (id);
 
 ALTER TABLE "coreProductSourceCategories"
