@@ -56,7 +56,7 @@ CREATE TABLE tests.product_status_history_grp_001 PARTITION OF tests.product_sta
     411, 916, 907, 911, 914, 913, 906, 909, 912, 1071, 1072, 775,
     840, 939, 1008, 1006, 1009, 1011, 1005, 1012, 1010, 1013, 1007);
 
-CREATE TABLE tests.product_status_history_grp_002 PARTITION OF tests.product_status_history FOR VALUES IN ( 576, 708, 1203, 1237, 1238, 1537);
+CREATE TABLE tests.product_status_history_arch PARTITION OF tests.product_status_history FOR VALUES IN ( 576, 708, 1203, 1237, 1238, 1537);
 
 INSERT INTO tests.product_status_history("retailerId", "coreProductId", date, "productId", status)
 SELECT "retailerId", "coreProductId", date, "productId", status
@@ -64,9 +64,21 @@ FROM staging.product_status_history;
 
 
 SELECT COUNT(*)
-FROM tests.product_status_history_1538;
+FROM tests.product_status_history_1;
+-- execution: 2 s 78 ms
+
+SELECT COUNT(*)
+FROM tests.product_status_history
+WHERE "retailerId" = 1;
+-- execution: 2 s 874 ms
+
+SELECT COUNT(*)
+FROM staging.product_status_history
+WHERE "retailerId" = 1;
+-- execution: 6 s 54 ms
 
 --TRUNCATE TABLE tests.product_status_history;
 
 
 
+select count(*) from tests.product_status_history_arch
