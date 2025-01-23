@@ -224,6 +224,7 @@ SELECT id,
        JSON_ARRAY_LENGTH(data #> '{products}')              AS product_count,
        data #> '{retailer, name}'                           AS retailer
 FROM staging.load
+where (dd_retailer).id=411 and dd_date='2025-01-10'
 ORDER BY id DESC;
 
 /*
